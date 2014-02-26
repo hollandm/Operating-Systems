@@ -168,7 +168,7 @@ public class SOS implements CPU.TrapHandler
 	 */
 	public void createIdleProcess()
 	{
-		debugPrintln("Creating Idle Processs");
+//		debugPrintln("Creating Idle Processs");
 		int progArr[] = { 0, 0, 0, 0,   //SET r0=0
 				0, 0, 0, 0,   //SET r0=0 (repeated instruction to account for vagaries in student implementation of the CPU class)
 				10, 0, 0, 0,   //PUSH r0
@@ -278,7 +278,7 @@ public class SOS implements CPU.TrapHandler
 
 		printProcessTable();
 
-		if (m_processes.size() == 0) {
+		if (m_processes.isEmpty()) {
 			System.out.println("No more processes available");
 			System.exit(0);
 		}
@@ -290,7 +290,7 @@ public class SOS implements CPU.TrapHandler
 
 		//If their isn't an unblocked process then make an idle process.
 		if (newProcess == null) {
-			debugPrintln("Creating Idle Process");
+//			debugPrintln("Creating Idle Process");
 			createIdleProcess();
 			return;
 		}
@@ -661,11 +661,17 @@ public class SOS implements CPU.TrapHandler
 			return;
 		}
 
+		//check that the device is not already open
+		if (deviceInfo.containsProcess(m_currProcess)) {
+			m_CPU.push(DEVICE_ALREADY_OPEN_ERROR);
+			return;
+		}
+		
 		//check that the device is sharable and if not then check that it's not already open
 		if (!deviceInfo.getDevice().isSharable() && !deviceInfo.unused()) {
 			//			m_CPU.push(DEVICE_NOT_SHARABLE_ERROR);
 			deviceInfo.addProcess(m_currProcess);
-
+			debugPrintln("Blocked Process " + m_currProcess.getProcessId() + " on device " + deviceInfo.getId());
 
 			//address is left as zero since it doesn't apply to opening a device (I think)
 			m_currProcess.block(m_CPU, deviceInfo.getDevice(), SYSCALL_OPEN, 0);
@@ -676,14 +682,9 @@ public class SOS implements CPU.TrapHandler
 			return;
 		}
 
-		//check that the device is not already open
-		if (deviceInfo.containsProcess(m_currProcess)) {
-			m_CPU.push(DEVICE_ALREADY_OPEN_ERROR);
-			return;
-		}
 
-
-
+		debugPrintln("Process " + m_currProcess.getProcessId() + " opened device " + deviceNum);
+		
 		deviceInfo.addProcess(m_currProcess);
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
 	}
@@ -718,10 +719,18 @@ public class SOS implements CPU.TrapHandler
 		ProcessControlBlock blockedProcess = selectBlockedProcess(deviceInfo.getDevice(), SYSCALL_OPEN, 0);
 		//Again addr is left as 0 since as far as I can tell it does not apply
 
+
+		debugPrintln("Process " + m_currProcess.getProcessId() + " closed device " + deviceNum);
+		
 		if (blockedProcess != null) {
 			blockedProcess.unblock();
-		}
 
+			debugPrintln("Process " + blockedProcess.getProcessId() + " opened device " + deviceNum);
+		} else {
+			System.out.print("");
+		}
+		
+		
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
 	}
 
@@ -772,7 +781,8 @@ public class SOS implements CPU.TrapHandler
 			m_CPU.push(data);
 			m_CPU.push(SOS.SYSCALL_WRITE);
 			m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
-
+			debugPrintln("Process id " + m_currProcess.getProcessId() + " is now ready");
+			
 			scheduleNewProcess();
 			return;
 		}
@@ -784,23 +794,6 @@ public class SOS implements CPU.TrapHandler
 		dev.write(addr, data);
 
 		scheduleNewProcess();
-		//		Thread.yield();
-
-		//NOTE: Placing a Thread.sleep(100) here allows runMultiple2 to run
-		//		try {
-		//			Thread.sleep(100);
-		//		} catch (InterruptedException e) {
-		//			// TODO Auto-generated catch block
-		//			e.printStackTrace();
-		//		}
-		//TODO: Ensure that device is not writing out of bounds?
-
-
-		/*
-		TODO: Delete this segment once we have tested
-		device.write(addr, data);
-		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
-		 */
 
 	}
 
@@ -846,6 +839,7 @@ public class SOS implements CPU.TrapHandler
 			m_CPU.push(addr);
 			m_CPU.push(SOS.SYSCALL_READ);
 			m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
+			debugPrintln("Process id " + m_currProcess.getProcessId() + " is now ready");
 			scheduleNewProcess();
 			return;
 		}
@@ -858,16 +852,7 @@ public class SOS implements CPU.TrapHandler
 		dev.read(addr);
 		scheduleNewProcess();
 
-		/*
-		 * TODO: Delete this segment once we have tested
 
-
-		int data = dev.read(addr);
-
-		//value should be pushed before you push the success/error code
-		m_CPU.push(data);
-		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
-		 */
 	}
 
 
@@ -944,15 +929,8 @@ public class SOS implements CPU.TrapHandler
 	public void interruptIOReadComplete(int devID, int addr, int data) {
 
 		DeviceInfo devInfo = getDeviceInfo(devID);
-
-		//Find a process blocked for this device
-		ProcessControlBlock blocked = null;
-		for (ProcessControlBlock proc : devInfo.procs) {
-			if (proc.isBlockedForDevice(devInfo.getDevice(), SYSCALL_READ, addr)) {
-				blocked = proc;
-				break;
-			}
-		}
+		
+		ProcessControlBlock blocked = selectBlockedProcess(devInfo.getDevice(), SYSCALL_READ, addr);
 
 		if (blocked == null) {
 			//			TODO: if things break this might be why.
@@ -960,17 +938,13 @@ public class SOS implements CPU.TrapHandler
 			System.exit(0);
 		}
 
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been recived an interupt from device " + devID);
 		blocked.unblock();
 
-		blocked.push(data);
 		//Push the data we received from the read to the reading processes stack
-//		int blockedSP = blocked.getRegisterValue(CPU.SP) - CPU.STACKITEMSIZE;
-//		m_RAM.write(blockedSP, data);
+		blocked.push(data);
 
 		//Push a successful system call indicator to the reading processes stack
-//		blockedSP -= CPU.STACKITEMSIZE;
-//		m_RAM.write(blockedSP, SOS.SYSTEM_HANDLER_SUCCESS);
 		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
 		
 //		blocked.setRegisterValue(CPU.SP, blockedSP);
@@ -982,31 +956,21 @@ public class SOS implements CPU.TrapHandler
 	public void interruptIOWriteComplete(int devID, int addr) {
 		DeviceInfo devInfo = getDeviceInfo(devID);
 
-		//Find a process blocked for this device
-		ProcessControlBlock blocked = null;
-		for (ProcessControlBlock proc : devInfo.procs) {
-			if (proc.isBlockedForDevice(devInfo.getDevice(), SYSCALL_WRITE, addr)) {
-				blocked = proc;
-				break;
-			}
-		}
+		ProcessControlBlock blocked = selectBlockedProcess(devInfo.getDevice(), SYSCALL_WRITE, addr);
 
+		
 		System.out.println("Device Procs Size: "+devInfo.procs.size());
 		if (blocked == null) {
 			//			TODO: if things break this might be why.
 			//			TODO: Fix Something. RunMultiple2 doesn't break if I step through it. Hitting continue does break it. Must be a thread problem.
-			System.out.println("Null blocked process, interruptIOWriteComplete");
+//			System.out.println("Null blocked process, interruptIOWriteComplete");
 			System.exit(0);
 		}
 
-		//Push a successful system call indicator to the reading processes stack
-//		int blockedSP = blocked.getRegisterValue(CPU.SP) - CPU.STACKITEMSIZE;
-//		m_RAM.write(blockedSP, SOS.SYSTEM_HANDLER_SUCCESS);
-//		blocked.setRegisterValue(CPU.SP, blockedSP);
 		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
 		
 		blocked.unblock();
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been recived an interupt from device " + devID);
 	}
 
 
