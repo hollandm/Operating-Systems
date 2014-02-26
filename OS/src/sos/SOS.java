@@ -672,7 +672,7 @@ public class SOS implements CPU.TrapHandler
 			//			m_CPU.push(DEVICE_NOT_SHARABLE_ERROR);
 			deviceInfo.addProcess(m_currProcess);
 			debugPrintln("Blocked Process " + m_currProcess.getProcessId() + " on device " + deviceInfo.getId());
-
+			debugPrintln(m_currProcess.toString());
 			//address is left as zero since it doesn't apply to opening a device (I think)
 			m_currProcess.block(m_CPU, deviceInfo.getDevice(), SYSCALL_OPEN, 0);
 
@@ -1090,7 +1090,7 @@ public class SOS implements CPU.TrapHandler
 			blockedForOperation = op;
 			blockedForAddr = addr;
 
-			debugPrintln("Process " + m_currProcess.getProcessId() + " has been blocked");
+			debugPrintln("Process " + m_currProcess.getProcessId() + " has been blocked while waiting for " + dev.getId());
 
 		}//block
 
@@ -1277,9 +1277,8 @@ public class SOS implements CPU.TrapHandler
 		 * 
 		 * @param data
 		 */
-		@SuppressWarnings("unused")
 		public void push(int data) {
-			int sp = getRegisterValue(CPU.SP) + 1;
+			int sp = getRegisterValue(CPU.SP) - CPU.STACKITEMSIZE;
 			setRegisterValue(CPU.SP, sp);
 			m_RAM.write(sp, data);
 		}
@@ -1293,9 +1292,9 @@ public class SOS implements CPU.TrapHandler
 		 * @return
 		 */
 		public int pop() {
-			int sp = getRegisterValue(CPU.SP) - 1;
+			int sp = getRegisterValue(CPU.SP) + CPU.STACKITEMSIZE;
 			setRegisterValue(CPU.SP, sp);
-			return m_RAM.read(sp+1);
+			return m_RAM.read(sp+CPU.STACKITEMSIZE);
 			
 		}
 
