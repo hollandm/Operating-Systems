@@ -11,8 +11,19 @@ import java.util.*;
  * @authors harber14, hollandm15
  */
    
-public class SOS
+public class SOS implements CPU.TrapHandler
 {
+	
+    //======================================================================
+    //Constants
+    //----------------------------------------------------------------------
+
+    //These constants define the system calls this OS can currently handle
+    public static final int SYSCALL_EXIT     = 0;    /* exit the current program */
+    public static final int SYSCALL_OUTPUT   = 1;    /* outputs a number */
+    public static final int SYSCALL_GETPID   = 2;    /* get current process id */
+    public static final int SYSCALL_COREDUMP = 9;    /* print process state and exit */
+	
     //======================================================================
     //Member variables
     //----------------------------------------------------------------------
@@ -52,6 +63,7 @@ public class SOS
         //Init member list
         m_CPU = c;
         m_RAM = r;
+    	m_CPU.registerTrapHandler(this);
     }//SOS ctor
     
     /**
@@ -105,18 +117,22 @@ public class SOS
     //insert method header here
     public void createProcess(Program prog, int allocSize)
     {
-    	
-        int testProcess[] = prog.export(); //load parsed process
-        int stackSize = allocSize - testProcess.length;//set the size of the stack in proportion to allocSize
         
-        m_CPU.setBASE(base); //Set base to arbitrary value
+    	int testProcess[] = prog.export(); //load parsed process
         
-        //Set limit according to allocSize, base and stack size
-        m_CPU.setLIM(m_CPU.getBASE() + allocSize); 
+    	if(prog.getSize() >= allocSize){
+    		allocSize = prog.getSize()*3; //enlarge allocSize to fit program
+    	}
         
-        m_CPU.setPC(m_CPU.getBASE()); //PC starts at base offset
+        int stackSize = allocSize - prog.getSize();
         
-        m_CPU.setSP(m_CPU.getBASE() + allocSize - stackSize); //set stack pointer
+        m_CPU.setBASE(base); //Set base to arbitrary value (can be changed above)
+        
+        m_CPU.setLIM(allocSize); 
+        
+        m_CPU.setPC(m_CPU.getBASE()); 
+        
+        m_CPU.setSP(m_CPU.getBASE() + allocSize - stackSize); 
         
         //load the program into memory so it can execute
         for(int i = 0; i < testProcess.length; i++){
@@ -138,5 +154,108 @@ public class SOS
      */
     
     //None yet!
+    
+    
+    //<insert header comment here>
+    public void systemCall()
+    {
+    	
+    	int syscall_input = m_CPU.pop();
+    	
+    	switch (syscall_input) {
+		case SYSCALL_EXIT:
+			handleSyscallExit();
+			break;
+		case SYSCALL_OUTPUT:
+			handleSyscallOutput();
+			break;
+		case SYSCALL_GETPID:
+			handleSyscallGetPID();
+			break;
+		case SYSCALL_COREDUMP:
+			handleSyscallCoreDump();
+			break;
+
+		default:
+			break;
+		}
+    	
+    }
+    
+    /**
+     * handleSyscallExit
+     * 
+     * Terminates the program
+     */
+    public void handleSyscallExit() {
+    	System.exit(0);
+    }
+    
+    
+    /**
+     * handleSyscallOutput
+     * 
+     * Pops an item off the stack and prints it to console
+     */
+    public void handleSyscallOutput() {
+    	int output = m_CPU.pop();
+    	
+    	System.out.println("OUTPUT: " + output);
+    }
+
+    
+    /**
+     * handleSyscallGetPID
+     * 
+     * Not yet implemented, pushes 42 to the stack
+     */
+    public void handleSyscallGetPID() {
+    	m_CPU.push(42);
+    }
+    
+    
+    /**
+     * handleSyscallCoreDump
+     * 
+     * calls CPU.regDump, prints the top 3 items on the stack, terminates the program
+     * 
+     */
+    public void handleSyscallCoreDump() {
+    	m_CPU.regDump();
+    	
+    	int output = m_CPU.pop();
+    	System.out.println("OUTPUT: " + output);
+
+    	output = m_CPU.pop();
+    	System.out.println("OUTPUT: " + output);
+    
+    	output = m_CPU.pop();
+    	System.out.println("OUTPUT: " + output);
+    
+    	System.exit(0);
+    }
+    
+    
+	@Override
+	public void interruptIllegalMemoryAccess(int addr) {
+		System.out.println("Illegal Memory Access!");
+        System.exit(0);
+		
+	}
+
+	@Override
+	public void interruptDivideByZero() {
+		System.out.println("Divide by Zero Error!");
+        System.exit(0);
+		
+	}
+
+	@Override
+	public void interruptIllegalInstruction(int[] instr) {
+		System.out.println("Illegal Intruction!");
+        System.exit(0);
+		
+	}
+
     
 };//class SOS

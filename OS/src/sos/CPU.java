@@ -60,10 +60,11 @@ public class CPU
     //======================================================================
     //Member variables
     //----------------------------------------------------------------------
+    
     /**
      * specifies whether the CPU should output details of its work
      **/
-    private boolean m_verbose = true;
+    private boolean m_verbose = false;
 
     /**
      * This array contains all the registers on the "chip".
@@ -76,6 +77,12 @@ public class CPU
      * @see RAM
      **/
     private RAM m_RAM = null;
+    
+    /**
+     * a reference to the trap handler for this CPU.  On a real CPU this would
+     * simply be an address that the PC register is set to.
+     */
+    private TrapHandler m_TH = null;
     
     //======================================================================
     //Methods
@@ -192,7 +199,7 @@ public class CPU
      *
      * Prints the values of the registers.  Useful for debugging.
      */
-    private void regDump()
+    public void regDump()
     {
         for(int i = 0; i < NUMGENREG; i++)
         {
@@ -257,7 +264,7 @@ public class CPU
                     System.out.println("SAVE R" + instr[1] + " --> @R" + instr[2]);
                     break;
                 case TRAP:
-                    System.out.print("TRAP ");
+                    System.out.println("TRAP ");
                     break;
                 default:        // should never be reached
                     System.out.println("?? ");
@@ -305,7 +312,7 @@ public class CPU
      * @return true if value is in range, false if value out of bounds
      */
     public boolean isMemAddressInRange(int value){
-    	if(value < getLIM() || value >= getBASE())
+    	if(value < getLIM() + getBASE() && value >= getBASE())
     		return true; //indicates memory address in range
     	
     	return false; //indicates memory address not in range
@@ -371,9 +378,9 @@ public class CPU
                     	
                     	//check for divide by zero error
                     	if(m_registers[instruction[3]] == 0){
-                    		System.out.println("ERROR: Divide by Zero");
-                    		return; }
-                    	//if no divide by zero error, perform integer division
+                    		m_TH.interruptDivideByZero();
+                    	}
+                    	
                     	m_registers[instruction[1]] = m_registers[instruction[2]] / m_registers[instruction[3]];
                         break;
                         
@@ -386,7 +393,7 @@ public class CPU
                     case BRANCH:
                     	//Check that specified branch address is in memory bounds
                     	if(!isMemAddressInRange(instruction[1]+getBASE()))
-                    		System.out.println("ERROR: Out of memory bounds");
+                    		m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
                     	
                     	//The program counter is set to the specified address. 
                     	setPC(instruction[1]+getBASE() - 4);
@@ -397,7 +404,7 @@ public class CPU
                     case BNE:
                     	//Check that PC address is in memory bounds
                     	if(!isMemAddressInRange(instruction[3]+getBASE()))
-                    		System.out.println("ERROR: Out of bounds");
+                    		m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
                     	
                     	//If the value of the register specified by arg1 is not equal to 
                     	//the value of the register specified by arg2 then the value of 
@@ -411,7 +418,7 @@ public class CPU
                     case BLT:
                     	//Check that PC address is in memory bounds
                     	if(!isMemAddressInRange(instruction[3]+getBASE()))
-                    		System.out.println("ERROR: Out of memory bounds");
+                    		m_TH.interruptIllegalMemoryAccess(instruction[1]+getBASE());
                     	
                     	//If the value of the register specified by arg1 is less than 
                     	//the value of the register specified by arg2 then the value 
@@ -439,7 +446,7 @@ public class CPU
                     case LOAD:
                     	//check that memory address is in range. If not, print error message
                     	if(!isMemAddressInRange(m_registers[instruction[2]]+getBASE()))
-                    		System.out.println("ERROR: Out of memory bounds");
+                    		m_TH.interruptIllegalMemoryAccess(instruction[2]+getBASE());
                     	
                     	//The value in RAM at the address specified by the register 
                     	//specified by arg2 is placed into the register specified by arg1.
@@ -449,7 +456,7 @@ public class CPU
                     case SAVE:
                     	//check that memory address is in range. If not, print error message
                     	if(!isMemAddressInRange(m_registers[instruction[2]]+getBASE()))
-                    		System.out.println("ERROR: Out of memory bounds");
+                    		m_TH.interruptIllegalMemoryAccess(instruction[2]+getBASE());
                     	
                     	//The value of the register specified by arg1 is placed 
                     	//in RAM at the address specified by the register specified by arg2.
@@ -457,10 +464,12 @@ public class CPU
                         break;
                         
                     case TRAP:
-                    	return; //will be implemented later
+                    	
+                    	m_TH.systemCall();
+                    	break;
 
                     default:        // should never be reached
-                        System.out.println("There is an error if you are reaching this point");
+                        m_TH.interruptIllegalInstruction(instruction);
                         break;          
                 }//switch
     		
@@ -469,4 +478,41 @@ public class CPU
 
     }//run
     
+    
+    //======================================================================
+    //Callback Interface
+    //----------------------------------------------------------------------
+    /**
+     * TrapHandler
+     *
+     * This interface should be implemented by the operating system to allow the
+     * simulated CPU to generate hardware interrupts and system calls.
+     */
+    public interface TrapHandler
+    {
+        void interruptIllegalMemoryAccess(int addr);
+        void interruptDivideByZero();
+        void interruptIllegalInstruction(int[] instr);
+        void systemCall();
+    };//interface TrapHandler
+
+
+    
+
+    /**
+     * registerTrapHandler
+     *
+     * allows SOS to register itself as the trap handler 
+     */
+    public void registerTrapHandler(TrapHandler th)
+    {
+        m_TH = th;
+    }
+    
+    
+
+    
 };//class CPU
+
+
+
