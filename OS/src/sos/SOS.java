@@ -29,9 +29,9 @@ public class SOS implements CPU.TrapHandler
 	public static final int SYSCALL_GETPID   = 2;    /* get current process id */
 	public static final int SYSCALL_COREDUMP = 9;    /* print process state and exit */
 
-	
-    public static final int SYSCALL_EXEC    = 7;    /* spawn a new process */
-    public static final int SYSCALL_YIELD   = 8;    /* yield the CPU to another process */
+
+	public static final int SYSCALL_EXEC    = 7;    /* spawn a new process */
+	public static final int SYSCALL_YIELD   = 8;    /* yield the CPU to another process */
 
 	// These constants define the error codes used by the system handers encounter errors
 
@@ -42,6 +42,9 @@ public class SOS implements CPU.TrapHandler
 	public static final int DEVICE_NOT_OPEN_ERROR = -4;
 	public static final int DEVICE_READ_ONLY_ERROR = -5;
 	public static final int DEVICE_WRITE_ONLY_ERROR = -6;
+
+	/**This process is used as the idle process' id*/
+	public static final int IDLE_PROC_ID    = 999;  
 
 
 	//======================================================================
@@ -76,23 +79,23 @@ public class SOS implements CPU.TrapHandler
 	 * All parsed asm files
 	 */
 	private Vector<Program> m_programs = new Vector<Program>();
-	
+
 	/**
 	 * Next location in memory to place a process
 	 */
 	private int m_nextLoadPos = 0;
-	
+
 	/**
 	 * ID of next process created
 	 */
 	private int m_nextProcessID = 1001;
 
 	/**
-	 * List of all proceses loaded in ram
+	 * List of all processes loaded in ram
 	 */
 	private Vector<ProcessControlBlock> m_processes = new Vector<ProcessControlBlock>();
-	
-	
+
+
 	/*======================================================================
 	 * Constructors & Debugging
 	 *----------------------------------------------------------------------
@@ -109,7 +112,7 @@ public class SOS implements CPU.TrapHandler
 		m_CPU.registerTrapHandler(this);
 
 		m_currProcess = new ProcessControlBlock(m_nextProcessID);
-//		++m_nextProcessID;
+		//		++m_nextProcessID;
 
 		m_devices = new Vector<SOS.DeviceInfo>();
 	}//SOS ctor
@@ -151,152 +154,206 @@ public class SOS implements CPU.TrapHandler
 	//None yet!
 
 	/*======================================================================
-     * Process Management Methods
-     *----------------------------------------------------------------------
-     */
+	 * Process Management Methods
+	 *----------------------------------------------------------------------
+	 */
 
-    /**
-     * printProcessTable      **DEBUGGING**
-     *
-     * prints all the processes in the process table
-     */
-    private void printProcessTable()
-    {
-        debugPrintln("");
-        debugPrintln("Process Table (" + m_processes.size() + " processes)");
-        debugPrintln("======================================================================");
-        for(ProcessControlBlock pi : m_processes)
-        {
-            debugPrintln("    " + pi);
-        }//for
-        debugPrintln("----------------------------------------------------------------------");
+	/**
+	 * createIdleProcess
+	 *
+	 * creates a one instruction process that immediately exits.  This is used
+	 * to buy time until device I/O completes and unblocks a legitimate
+	 * process.
+	 *
+	 */
+	public void createIdleProcess()
+	{
+		debugPrintln("Creating Idle Processs");
+		int progArr[] = { 0, 0, 0, 0,   //SET r0=0
+				0, 0, 0, 0,   //SET r0=0 (repeated instruction to account for vagaries in student implementation of the CPU class)
+				10, 0, 0, 0,   //PUSH r0
+				15, 0, 0, 0 }; //TRAP
 
-    }//printProcessTable
+		//Initialize the starting position for this program
+		int baseAddr = m_nextLoadPos;
 
-    /**
-     * removeCurrentProcess
-     * 
-     * removes the current process from m_processes and randomly selects a new process
-     */
-    public void removeCurrentProcess()
-    {
-        m_processes.remove(m_currProcess);
-        
-        //if no other non-blocked process are avaialble then scheduleNewProcess will not
-        //overwrite m_currProcess. We will allow m_currProcess to continue running until a
-        //new process becomes avaialble. At that point all referecnes to that process should
-        //cease to exist and the garbage collecter can handle the rest
-        
-        debugPrintln("The process " + m_currProcess.getProcessId() + " has been removed from RAM");
-        
-        scheduleNewProcess();
-    }//removeCurrentProcess
+		//Load the program into RAM
+		for(int i = 0; i < progArr.length; i++)
+		{
+			m_RAM.write(baseAddr + i, progArr[i]);
+		}
 
-    /**
-     * getRandomProcess
-     *
-     * selects a non-Blocked process at random from the ProcessTable.
-     *
-     * @return a reference to the ProcessControlBlock struct of the selected process
-     * -OR- null if no non-blocked process exists
-     */
-    ProcessControlBlock getRandomProcess()
-    {
-        //Calculate a random offset into the m_processes list
-        int offset = ((int)(Math.random() * 2147483647)) % m_processes.size();
-            
-        //Iterate until a non-blocked process is found
-        ProcessControlBlock newProc = null;
-        for(int i = 0; i < m_processes.size(); i++)
-        {
-            newProc = m_processes.get((i + offset) % m_processes.size());
-            if ( ! newProc.isBlocked())
-            {
-                return newProc;
-            }
-        }//for
+		//Save the register info from the current process (if there is one)
+		if (m_currProcess != null)
+		{
+			m_currProcess.save(m_CPU);
+		}
 
-        return null;        // no processes are Ready
-    }//getRandomProcess
-    
-    /**
-     * scheduleNewProcess
-     * 
-     * Checks if a random non-blocked process is available
-     * if it is available then run it
-     * otherwise if no process are available end the simulation
-     */
-    public void scheduleNewProcess()
-    {
+		//Set the appropriate registers
+		m_CPU.setPC(baseAddr);
+		m_CPU.setSP(baseAddr + progArr.length + 10);
+		m_CPU.setBASE(baseAddr);
+		m_CPU.setLIM(baseAddr + progArr.length + 20);
 
-        if (m_processes.size() == 0) {
-        	System.out.println("No more processes available");
-        	System.exit(0);
-        }
-        
-        ProcessControlBlock newProcess = getRandomProcess();
-        if (newProcess == null)
-        	return;
-        
-        m_currProcess.save(m_CPU);
+		//Save the relevant info as a new entry in m_processes
+		m_currProcess = new ProcessControlBlock(IDLE_PROC_ID);  
+		m_processes.add(m_currProcess);
 
-        m_currProcess = newProcess;
-        
-        debugPrintln("The process " + m_currProcess.getProcessId() + " has begun running");
-        
-        m_currProcess.restore(m_CPU);
+	}//createIdleProcess
 
-    }//scheduleNewProcess
+	/**
+	 * printProcessTable      **DEBUGGING**
+	 *
+	 * prints all the processes in the process table
+	 */
+	private void printProcessTable()
+	{
+		debugPrintln("");
+		debugPrintln("Process Table (" + m_processes.size() + " processes)");
+		debugPrintln("======================================================================");
+		for(ProcessControlBlock pi : m_processes)
+		{
+			debugPrintln("    " + pi);
+		}//for
+		debugPrintln("----------------------------------------------------------------------");
 
-    /**
-     * addProgram
-     *
-     * registers a new program with the simulated OS that can be used when the
-     * current process makes an Exec system call.  (Normally the program is
-     * specified by the process via a filename but this is a simulation so the
-     * calling process doesn't actually care what program gets loaded.)
-     *
-     * @param prog  the program to add
-     *
-     */
-    public void addProgram(Program prog)
-    {
-        m_programs.add(prog);
-    }//addProgram
-    
+	}//printProcessTable
+
+	/**
+	 * removeCurrentProcess
+	 * 
+	 * removes the current process from m_processes and randomly selects a new process
+	 */
+	public void removeCurrentProcess()
+	{
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been removed from RAM");
+
+		m_processes.remove(m_currProcess);
+
+		//if no other non-blocked process are available then scheduleNewProcess will not
+		//overwrite m_currProcess. We will allow m_currProcess to continue running until a
+		//new process becomes available. At that point all references to that process should
+		//cease to exist and the garbage collector can handle the rest
 
 
-    
-    /**
-     * selectBlockedProcess
-     *
-     * select a process to unblock that might be waiting to perform a given
-     * action on a given device.  This is a helper method for system calls
-     * and interrupts that deal with devices.
-     *
-     * @param dev   the Device that the process must be waiting for
-     * @param op    the operation that the process wants to perform on the
-     *              device.  Use the SYSCALL constants for this value.
-     * @param addr  the address the process is reading from.  If the
-     *              operation is a Write or Open then this value can be
-     *              anything
-     *
-     * @return the process to unblock -OR- null if none match the given criteria
-     */
-    public ProcessControlBlock selectBlockedProcess(Device dev, int op, int addr)
-    {
-        ProcessControlBlock selected = null;
-        for(ProcessControlBlock pi : m_processes)
-        {
-            if (pi.isBlockedForDevice(dev, op, addr))
-            {
-                selected = pi;
-                break;
-            }
-        }//for
+		scheduleNewProcess();
+	}//removeCurrentProcess
 
-        return selected;
-    }//selectBlockedProcess
+	/**
+	 * getRandomProcess
+	 *
+	 * selects a non-Blocked process at random from the ProcessTable.
+	 *
+	 * @return a reference to the ProcessControlBlock struct of the selected process
+	 * -OR- null if no non-blocked process exists
+	 */
+	ProcessControlBlock getRandomProcess()
+	{
+		//Calculate a random offset into the m_processes list
+		int offset = ((int)(Math.random() * 2147483647)) % m_processes.size();
+
+		//Iterate until a non-blocked process is found
+		ProcessControlBlock newProc = null;
+		for(int i = 0; i < m_processes.size(); i++)
+		{
+			newProc = m_processes.get((i + offset) % m_processes.size());
+			if ( ! newProc.isBlocked())
+			{
+				return newProc;
+			}
+		}//for
+
+		return null;        // no processes are Ready
+	}//getRandomProcess
+
+	/**
+	 * scheduleNewProcess
+	 * 
+	 * Checks if a random non-blocked process is available
+	 * if it is available then run it
+	 * otherwise if no process are available end the simulation
+	 */
+	public void scheduleNewProcess()
+	{
+
+		printProcessTable();
+
+		if (m_processes.size() == 0) {
+			System.out.println("No more processes available");
+			System.exit(0);
+		}
+
+		ProcessControlBlock newProcess = getRandomProcess();
+
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
+		m_currProcess.save(m_CPU);
+
+		//If their isn't an unblocked process then make an idle process.
+		if (newProcess == null) {
+			debugPrintln("Creating Idle Process");
+			createIdleProcess();
+			return;
+		}
+
+
+
+		m_currProcess = newProcess;
+
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has begun running");
+
+		m_currProcess.restore(m_CPU);
+
+	}//scheduleNewProcess
+
+	/**
+	 * addProgram
+	 *
+	 * registers a new program with the simulated OS that can be used when the
+	 * current process makes an Exec system call.  (Normally the program is
+	 * specified by the process via a filename but this is a simulation so the
+	 * calling process doesn't actually care what program gets loaded.)
+	 *
+	 * @param prog  the program to add
+	 *
+	 */
+	public void addProgram(Program prog)
+	{
+		m_programs.add(prog);
+	}//addProgram
+
+
+
+
+	/**
+	 * selectBlockedProcess
+	 *
+	 * select a process to unblock that might be waiting to perform a given
+	 * action on a given device.  This is a helper method for system calls
+	 * and interrupts that deal with devices.
+	 *
+	 * @param dev   the Device that the process must be waiting for
+	 * @param op    the operation that the process wants to perform on the
+	 *              device.  Use the SYSCALL constants for this value.
+	 * @param addr  the address the process is reading from.  If the
+	 *              operation is a Write or Open then this value can be
+	 *              anything
+	 *
+	 * @return the process to unblock -OR- null if none match the given criteria
+	 */
+	public ProcessControlBlock selectBlockedProcess(Device dev, int op, int addr)
+	{
+		ProcessControlBlock selected = null;
+		for(ProcessControlBlock pi : m_processes)
+		{
+			if (pi.isBlockedForDevice(dev, op, addr))
+			{
+				selected = pi;
+				break;
+			}
+		}//for
+
+		return selected;
+	}//selectBlockedProcess
 
 	/*======================================================================
 	 * Program Management Methods
@@ -316,55 +373,100 @@ public class SOS implements CPU.TrapHandler
 
 		int testProcess[] = prog.export(); //load parsed process
 
-		//TODO: try to figure out what this *3 came from, can we get rid of it?
-//		if(prog.getSize() >= allocSize){
-//			allocSize = prog.getSize()*3; //enlarge allocSize to fit program
-//		}
+		//TODO: try to figure out what this came from, can we get rid of it? It seems sketchy
+		if(prog.getSize() >= allocSize){
+			allocSize = prog.getSize()*3; //enlarge allocSize to fit program
+		}
 
 		// Check that we have enough space to create another process
 		if (allocSize + m_nextLoadPos > m_RAM.getSize()) {
 			debugPrintln("Not sufficent space in ram to add another process");
 			System.exit(0);
 		}
-		
+
+
+
 		//Save register values of the currently running process to somewhere
 		m_currProcess.save(m_CPU);
-		
-		int stackSize = allocSize - prog.getSize();
 
-		m_CPU.setBASE(m_nextLoadPos); //Set base to arbitrary value (can be changed above)
+		//Create a new process
+		ProcessControlBlock newProcess = new ProcessControlBlock(m_nextProcessID);
+		++m_nextProcessID;
 
-		m_CPU.setLIM(allocSize); 
-
+		int newBase = m_nextLoadPos;
 		m_nextLoadPos += allocSize;
-		
-		m_CPU.setPC(m_CPU.getBASE()); 
 
-		m_CPU.setSP(m_CPU.getBASE() + allocSize - stackSize); 
+		//initialize registers
+		m_CPU.setBASE(newBase); //Set base to arbitrary value (can be changed above)
+		m_CPU.setLIM(allocSize); 
+		m_CPU.setPC(newBase); 
+		m_CPU.setSP(newBase + allocSize - 1); 
+
 
 		//load the program into memory so it can execute
 		for(int i = 0; i < testProcess.length; i++){
-			m_RAM.write(i + m_CPU.getBASE(), testProcess[i]);
+			m_RAM.write(i + newBase, testProcess[i]);
 		}//for
 
+
+		m_processes.add(newProcess);
+		m_currProcess = newProcess;
+
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been added into RAM");
+
+
+		//		NOTE: Nux's sample ouput seems to indicate that he doesn't make the new process the currently 
+		//		running process. This might be an issue down the road
+		//		
+		//		On further inspection I think it does need to be created without being made
+		//		the main process since it will eventually make its way to cpu who will increment
+		//		the pc of a process expecting it to be the old process.
+		//		
+		//		My attempt at doing that was unsuccessful...
+
+		/*
+		 * Begin create non-running process experiment
+		 * 
 		ProcessControlBlock newProcess = new ProcessControlBlock(m_nextProcessID);
 		++m_nextProcessID;
 		m_processes.add(newProcess);
-		
+
+
+		int newBase = m_nextLoadPos;
+		m_nextLoadPos += allocSize;
+
+		newProcess.save(m_CPU);
+
+		newProcess.setRegisterValue(CPU.BASE, newBase);
+		newProcess.setRegisterValue(CPU.PC, newBase);
+		newProcess.setRegisterValue(CPU.LIM, allocSize);
+		newProcess.setRegisterValue(CPU.SP, newBase+allocSize);
+
+		//load the program into memory so it can execute
+		for(int i = 0; i < testProcess.length; i++){
+			m_RAM.write(i + newBase, testProcess[i]);
+		}//for
+
+		debugPrintln("The process " + newProcess.getProcessId() + " has been added into RAM");
+
+//		if (m_currProcess.registers == null) {
+		m_currProcess.save(m_CPU);
 		m_currProcess = newProcess;
-		
-      debugPrintln("The process " + m_currProcess.getProcessId() + " has been added into RAM");
-	        
-		
+		m_currProcess.restore(m_CPU);
+//		}
+		 * end begin non running process 
+		 */
+
+
 	}//createProcess
 
 
 
 
-    /*======================================================================
-     * System Calls
-     *----------------------------------------------------------------------
-     */
+	/*======================================================================
+	 * System Calls
+	 *----------------------------------------------------------------------
+	 */
 
 
 	/**
@@ -416,84 +518,84 @@ public class SOS implements CPU.TrapHandler
 		}
 
 	}
-	
-	
-    /**
-     * syscallExec
-     *
-     * creates a new process.  The program used to create that process is chosen
-     * semi-randomly from all the programs that have been registered with the OS
-     * via {@link #addProgram}.  Limits are put into place to ensure that each
-     * process is run an equal number of times.  If no programs have been
-     * registered then the simulation is aborted with a fatal error.
-     *
-     */
-    private void syscallExec()
-    {
-        //If there is nothing to run, abort.  This should never happen.
-        if (m_programs.size() == 0)
-        {
-            System.err.println("ERROR!  syscallExec has no programs to run.");
-            System.exit(-1);
-        }
-        
-        //find out which program has been called the least and record how many
-        //times it has been called
-        int leastCallCount = m_programs.get(0).callCount;
-        for(Program prog : m_programs)
-        {
-            if (prog.callCount < leastCallCount)
-            {
-                leastCallCount = prog.callCount;
-            }
-        }
-
-        //Create a vector of all programs that have been called the least number
-        //of times
-        Vector<Program> cands = new Vector<Program>();
-        for(Program prog : m_programs)
-        {
-            cands.add(prog);
-        }
-        
-        //Select a random program from the candidates list
-        Random rand = new Random();
-        int pn = rand.nextInt(m_programs.size());
-        Program prog = cands.get(pn);
-
-        //Determine the address space size using the default if available.
-        //Otherwise, use a multiple of the program size.
-        int allocSize = prog.getDefaultAllocSize();
-        if (allocSize <= 0)
-        {
-            allocSize = prog.getSize() * 2;
-        }
-
-        //Load the program into RAM
-        createProcess(prog, allocSize);
-
-        //Adjust the PC since it's about to be incremented by the CPU
-        m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
-
-    }//syscallExec
 
 
-    
-    //<method header needed>
-    private void syscallYield()
-    {
-        
-    	scheduleNewProcess();
-    	
-    }//syscallYield
+	/**
+	 * syscallExec
+	 *
+	 * creates a new process.  The program used to create that process is chosen
+	 * semi-randomly from all the programs that have been registered with the OS
+	 * via {@link #addProgram}.  Limits are put into place to ensure that each
+	 * process is run an equal number of times.  If no programs have been
+	 * registered then the simulation is aborted with a fatal error.
+	 *
+	 */
+	private void syscallExec()
+	{
+		//If there is nothing to run, abort.  This should never happen.
+		if (m_programs.size() == 0)
+		{
+			System.err.println("ERROR!  syscallExec has no programs to run.");
+			System.exit(-1);
+		}
 
-    
+		//find out which program has been called the least and record how many
+		//times it has been called
+		int leastCallCount = m_programs.get(0).callCount;
+		for(Program prog : m_programs)
+		{
+			if (prog.callCount < leastCallCount)
+			{
+				leastCallCount = prog.callCount;
+			}
+		}
+
+		//Create a vector of all programs that have been called the least number
+		//of times
+		Vector<Program> cands = new Vector<Program>();
+		for(Program prog : m_programs)
+		{
+			cands.add(prog);
+		}
+
+		//Select a random program from the candidates list
+		Random rand = new Random();
+		int pn = rand.nextInt(m_programs.size());
+		Program prog = cands.get(pn);
+
+		//Determine the address space size using the default if available.
+		//Otherwise, use a multiple of the program size.
+		int allocSize = prog.getDefaultAllocSize();
+		if (allocSize <= 0)
+		{
+			allocSize = prog.getSize() * 2;
+		}
+
+		//Load the program into RAM
+		createProcess(prog, allocSize);
+
+		//Adjust the PC since it's about to be incremented by the CPU
+		m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
+
+	}//syscallExec
+
+
+
+	//TODO:<method header needed>
+	private void syscallYield()
+	{
+
+		scheduleNewProcess();
+
+	}//syscallYield
+
+
 	/**
 	 * syscallExit
 	 * 
 	 * Terminates the program
 	 */
-	public void syscallExit() {
+	private void syscallExit() {
 		removeCurrentProcess();
 	}
 
@@ -503,7 +605,7 @@ public class SOS implements CPU.TrapHandler
 	 * 
 	 * Pops an item off the stack and prints it to console
 	 */
-	public void syscallOutput() {
+	private void syscallOutput() {
 		int output = m_CPU.pop();
 
 		System.out.println("OUTPUT: " + output);
@@ -515,7 +617,7 @@ public class SOS implements CPU.TrapHandler
 	 * 
 	 * Returns the process id of the system
 	 */
-	public void syscallGetPID() {
+	private void syscallGetPID() {
 		m_CPU.push(m_currProcess.getProcessId());
 	}
 
@@ -526,7 +628,7 @@ public class SOS implements CPU.TrapHandler
 	 * calls CPU.regDump, prints the top 3 items on the stack, terminates the program
 	 * 
 	 */
-	public void syscallCoreDump() {
+	private void syscallCoreDump() {
 		m_CPU.regDump();
 
 		int output = m_CPU.pop();
@@ -549,7 +651,7 @@ public class SOS implements CPU.TrapHandler
 	 * If the operation is not successful it will push an error code to the stack,
 	 * otherwise it will push a success code.
 	 */
-	public void syscallOpen() {
+	private void syscallOpen() {
 		int deviceNum = m_CPU.pop();
 		DeviceInfo deviceInfo = getDeviceInfo(deviceNum);
 
@@ -561,15 +663,15 @@ public class SOS implements CPU.TrapHandler
 
 		//check that the device is sharable and if not then check that it's not already open
 		if (!deviceInfo.getDevice().isSharable() && !deviceInfo.unused()) {
-//			m_CPU.push(DEVICE_NOT_SHARABLE_ERROR);
+			//			m_CPU.push(DEVICE_NOT_SHARABLE_ERROR);
 			deviceInfo.addProcess(m_currProcess);
-			
-			
+
+
 			//address is left as zero since it doesn't apply to opening a device (I think)
 			m_currProcess.block(m_CPU, deviceInfo.getDevice(), SYSCALL_OPEN, 0);
-			
+
 			m_CPU.push(SYSTEM_HANDLER_SUCCESS);
-			
+
 			scheduleNewProcess();
 			return;
 		}
@@ -595,7 +697,7 @@ public class SOS implements CPU.TrapHandler
 	 * If the operation is not successful it will push an error code to the stack,
 	 * otherwise it will push a success code.
 	 */
-	public void syscallClose() {
+	private void syscallClose() {
 		int deviceNum = m_CPU.pop();
 		DeviceInfo deviceInfo = getDeviceInfo(deviceNum);
 
@@ -612,14 +714,14 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		deviceInfo.removeProcess(m_currProcess);
-	
+
 		ProcessControlBlock blockedProcess = selectBlockedProcess(deviceInfo.getDevice(), SYSCALL_OPEN, 0);
 		//Again addr is left as 0 since as far as I can tell it does not apply
-		
+
 		if (blockedProcess != null) {
 			blockedProcess.unblock();
 		}
-		
+
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
 	}
 
@@ -634,38 +736,71 @@ public class SOS implements CPU.TrapHandler
 	 * otherwise it will push a success code
 	 * 
 	 */
-	public void syscallWrite() {
+	private void syscallWrite() {
 
 		int data = m_CPU.pop();
 		int addr = m_CPU.pop();
 
 		int deviceNum = m_CPU.pop();
-		DeviceInfo deviceInfo = getDeviceInfo(deviceNum);
+		DeviceInfo devInfo = getDeviceInfo(deviceNum);
 
 		//check that the device exists
-		if (deviceInfo == null) {
+		if (devInfo == null) {
 			m_CPU.push(DEVICE_NOT_FOUND_ERROR);
 			return;
 		}
 
 		//Called after if  to prevent a method call on a null object
-		Device device = deviceInfo.getDevice();
+		Device dev = devInfo.getDevice();
 
 		//Check that device is not already open
-		if (!deviceInfo.containsProcess(m_currProcess)) {
+		if (!devInfo.containsProcess(m_currProcess)) {
 			m_CPU.push(DEVICE_NOT_OPEN_ERROR);
 			return;
 		}
 
 		//Check that the device is not read only
-		if (!device.isWriteable()) {
+		if (!dev.isWriteable()) {
 			m_CPU.push(DEVICE_READ_ONLY_ERROR);
 			return;
 		}
 
+
+		if (!dev.isAvailable()) {
+			m_CPU.push(deviceNum);
+			m_CPU.push(addr);
+			m_CPU.push(data);
+			m_CPU.push(SOS.SYSCALL_WRITE);
+			m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
+
+			scheduleNewProcess();
+			return;
+		}
+
+		//Block the process
+		this.m_currProcess.save(m_CPU);
+		this.m_currProcess.block(m_CPU, dev, SOS.SYSCALL_WRITE, addr);
+
+		dev.write(addr, data);
+
+		scheduleNewProcess();
+		//		Thread.yield();
+
+		//NOTE: Placing a Thread.sleep(100) here allows runMultiple2 to run
+		//		try {
+		//			Thread.sleep(100);
+		//		} catch (InterruptedException e) {
+		//			// TODO Auto-generated catch block
+		//			e.printStackTrace();
+		//		}
 		//TODO: Ensure that device is not writing out of bounds?
+
+
+		/*
+		TODO: Delete this segment once we have tested
 		device.write(addr, data);
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
+		 */
 
 	}
 
@@ -678,40 +813,61 @@ public class SOS implements CPU.TrapHandler
 	 * If the operation is not successful it will push an error code to the stack,
 	 * otherwise it will push a success code
 	 */
-	public void syscallRead() {
+	private void syscallRead() {
+
 
 		int addr = m_CPU.pop();
 
 		int deviceNum = m_CPU.pop();
-		DeviceInfo deviceInfo = getDeviceInfo(deviceNum);
+
+		DeviceInfo devInfo = getDeviceInfo(deviceNum);
 
 		//check that the device exists
-		if (deviceInfo == null) {
+		if (devInfo == null) {
 			m_CPU.push(DEVICE_NOT_FOUND_ERROR);
 			return;
 		}
+		Device dev = devInfo.getDevice();
 
-		//Called after if  to prevent a method call on a null object
-		Device device = deviceInfo.getDevice();
-
-		//Check that device is not already open
-		if (!deviceInfo.containsProcess(m_currProcess)) {
+		//Check that device is already open
+		if (!devInfo.containsProcess(m_currProcess)) {
 			m_CPU.push(DEVICE_NOT_OPEN_ERROR);
 			return;
 		}
 
 		//Check that the device is not read only
-		if (!device.isReadable()) {
+		if (!dev.isReadable()) {
 			m_CPU.push(DEVICE_WRITE_ONLY_ERROR);
 			return;
 		}
 
-		int data = device.read(addr);
+		if (!dev.isAvailable()) {
+			m_CPU.push(deviceNum);
+			m_CPU.push(addr);
+			m_CPU.push(SOS.SYSCALL_READ);
+			m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
+			scheduleNewProcess();
+			return;
+		}
+
+
+		//Block the process
+		this.m_currProcess.save(m_CPU);
+		this.m_currProcess.block(m_CPU, dev, SOS.SYSCALL_READ, addr);
+
+		dev.read(addr);
+		scheduleNewProcess();
+
+		/*
+		 * TODO: Delete this segment once we have tested
+
+
+		int data = dev.read(addr);
 
 		//value should be pushed before you push the success/error code
 		m_CPU.push(data);
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
-
+		 */
 	}
 
 
@@ -738,7 +894,7 @@ public class SOS implements CPU.TrapHandler
 	 * Interrupt Handlers
 	 *----------------------------------------------------------------------
 	 */
-	
+
 	/**
 	 * interruptIllegalMemoryAccess
 	 * 
@@ -748,7 +904,7 @@ public class SOS implements CPU.TrapHandler
 	 */
 	@Override
 	public void interruptIllegalMemoryAccess(int addr) {
-		System.out.println("Illegal Memory Access!");
+		System.out.println("Illegal Memory Access of addr: " + addr);
 		System.exit(0);
 
 	}
@@ -779,6 +935,80 @@ public class SOS implements CPU.TrapHandler
 
 	}
 
+	/**
+	 * interruptIOReadComplete
+	 * 
+	 * TODO: Method Header
+	 */
+	@Override
+	public void interruptIOReadComplete(int devID, int addr, int data) {
+
+		DeviceInfo devInfo = getDeviceInfo(devID);
+
+		//Find a process blocked for this device
+		ProcessControlBlock blocked = null;
+		for (ProcessControlBlock proc : devInfo.procs) {
+			if (proc.isBlockedForDevice(devInfo.getDevice(), SYSCALL_READ, addr)) {
+				blocked = proc;
+				break;
+			}
+		}
+
+		if (blocked == null) {
+			//			TODO: if things break this might be why.
+			System.out.println("Null blocked process, interruptIOReadComplete");
+			System.exit(0);
+		}
+
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
+		blocked.unblock();
+
+		blocked.push(data);
+		//Push the data we received from the read to the reading processes stack
+//		int blockedSP = blocked.getRegisterValue(CPU.SP) - CPU.STACKITEMSIZE;
+//		m_RAM.write(blockedSP, data);
+
+		//Push a successful system call indicator to the reading processes stack
+//		blockedSP -= CPU.STACKITEMSIZE;
+//		m_RAM.write(blockedSP, SOS.SYSTEM_HANDLER_SUCCESS);
+		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
+		
+//		blocked.setRegisterValue(CPU.SP, blockedSP);
+
+	}
+
+	//	TODO: Method header
+	@Override
+	public void interruptIOWriteComplete(int devID, int addr) {
+		DeviceInfo devInfo = getDeviceInfo(devID);
+
+		//Find a process blocked for this device
+		ProcessControlBlock blocked = null;
+		for (ProcessControlBlock proc : devInfo.procs) {
+			if (proc.isBlockedForDevice(devInfo.getDevice(), SYSCALL_WRITE, addr)) {
+				blocked = proc;
+				break;
+			}
+		}
+
+		System.out.println("Device Procs Size: "+devInfo.procs.size());
+		if (blocked == null) {
+			//			TODO: if things break this might be why.
+			//			TODO: Fix Something. RunMultiple2 doesn't break if I step through it. Hitting continue does break it. Must be a thread problem.
+			System.out.println("Null blocked process, interruptIOWriteComplete");
+			System.exit(0);
+		}
+
+		//Push a successful system call indicator to the reading processes stack
+//		int blockedSP = blocked.getRegisterValue(CPU.SP) - CPU.STACKITEMSIZE;
+//		m_RAM.write(blockedSP, SOS.SYSTEM_HANDLER_SUCCESS);
+//		blocked.setRegisterValue(CPU.SP, blockedSP);
+		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
+		
+		blocked.unblock();
+		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
+	}
+
 
 	//======================================================================
 	// Inner Classes
@@ -792,28 +1022,28 @@ public class SOS implements CPU.TrapHandler
 	private class ProcessControlBlock
 	{
 		/**
-         * These are the process' current registers.  If the process is in the
-         * "running" state then these are out of date
-         */
-        private int[] registers = null;
+		 * These are the process' current registers.  If the process is in the
+		 * "running" state then these are out of date
+		 */
+		private int[] registers = null;
 
-        /**
-         * If this process is blocked a reference to the Device is stored here
-         */
-        private Device blockedForDevice = null;
-        
-        /**
-         * If this process is blocked a reference to the type of I/O operation
-         * is stored here (use the SYSCALL constants defined in SOS)
-         */
-        private int blockedForOperation = -1;
-        
-        /**
-         * If this process is blocked reading from a device, the requested
-         * address is stored here.
-         */
-        private int blockedForAddr = -1;
-		
+		/**
+		 * If this process is blocked a reference to the Device is stored here
+		 */
+		private Device blockedForDevice = null;
+
+		/**
+		 * If this process is blocked a reference to the type of I/O operation
+		 * is stored here (use the SYSCALL constants defined in SOS)
+		 */
+		private int blockedForOperation = -1;
+
+		/**
+		 * If this process is blocked reading from a device, the requested
+		 * address is stored here.
+		 */
+		private int blockedForAddr = -1;
+
 		/**
 		 * a unique id for this process
 		 */
@@ -837,174 +1067,275 @@ public class SOS implements CPU.TrapHandler
 		{
 			return this.processId;
 		}
+
+
+
+
+		/**
+		 * save
+		 *
+		 * saves the current CPU registers into this.registers
+		 *
+		 * @param cpu  the CPU object to save the values from
+		 */
+		public void save(CPU cpu)
+		{
+			int[] regs = cpu.getRegisters();
+			this.registers = new int[CPU.NUMREG];
+			for(int i = 0; i < CPU.NUMREG; i++)
+			{
+				this.registers[i] = regs[i];
+			}
+		}//save
+
+		/**
+		 * restore
+		 *
+		 * restores the saved values in this.registers to the current CPU's
+		 * registers
+		 *
+		 * @param cpu  the CPU object to restore the values to
+		 */
+		public void restore(CPU cpu)
+		{
+			int[] regs = cpu.getRegisters();
+			for(int i = 0; i < CPU.NUMREG; i++)
+			{
+				regs[i] = this.registers[i];
+			}
+
+		}//restore
+
+		/**
+		 * block
+		 *
+		 * blocks the current process to wait for I/O.  The caller is
+		 * responsible for calling {@link CPU#scheduleNewProcess}
+		 * after calling this method.
+		 *
+		 * @param cpu   the CPU that the process is running on
+		 * @param dev   the Device that the process must wait for
+		 * @param op    the operation that the process is performing on the
+		 *              device.  Use the SYSCALL constants for this value.
+		 * @param addr  the address the process is reading from (for SYSCALL_READ)
+		 * 
+		 */
+		public void block(CPU cpu, Device dev, int op, int addr)
+		{
+			blockedForDevice = dev;
+			blockedForOperation = op;
+			blockedForAddr = addr;
+
+			debugPrintln("Process " + m_currProcess.getProcessId() + " has been blocked");
+
+		}//block
+
+		/**
+		 * unblock
+		 *
+		 * moves this process from the Blocked (waiting) state to the Ready
+		 * state. 
+		 *
+		 */
+		public void unblock()
+		{
+			blockedForDevice = null;
+			blockedForOperation = -1;
+			blockedForAddr = -1;
+
+		}//block
+
+		/**
+		 * isBlocked
+		 *
+		 * @return true if the process is blocked
+		 */
+		public boolean isBlocked()
+		{
+			return (blockedForDevice != null);
+		}//isBlocked
+
+		/**
+		 * isBlockedForDevice
+		 *
+		 * Checks to see if the process is blocked for the given device,
+		 * operation and address.  If the operation is not an open, the given
+		 * address is ignored.
+		 *
+		 * @param dev   check to see if the process is waiting for this device
+		 * @param op    check to see if the process is waiting for this operation
+		 * @param addr  check to see if the process is reading from this address
+		 *
+		 * @return true if the process is blocked by the given parameters
+		 */
+		public boolean isBlockedForDevice(Device dev, int op, int addr)
+		{
+			if ( (blockedForDevice == dev) && (blockedForOperation == op) )
+			{
+				if (op == SYSCALL_OPEN)
+				{
+					return true;
+				}
+
+				if (addr == blockedForAddr)
+				{
+					return true;
+				}
+			}//if
+
+			return false;
+		}//isBlockedForDevice
+
+		/**
+		 * getRegisterValue
+		 *
+		 * Retrieves the value of a process' register that is stored in this
+		 * object (this.registers).
+		 * 
+		 * @param idx the index of the register to retrieve.  Use the constants
+		 *            in the CPU class
+		 * @return one of the register values stored in in this object or -999
+		 *         if an invalid index is given 
+		 */
+		public int getRegisterValue(int idx)
+		{
+			if ((idx < 0) || (idx >= CPU.NUMREG))
+			{
+				return -999;    // invalid index
+			}
+
+			return this.registers[idx];
+		}//getRegisterValue
+
+		/**
+		 * setRegisterValue
+		 *
+		 * Sets the value of a process' register that is stored in this
+		 * object (this.registers).  
+		 * 
+		 * @param idx the index of the register to set.  Use the constants
+		 *            in the CPU class.  If an invalid index is given, this
+		 *            method does nothing.
+		 * @param val the value to set the register to
+		 */
+		public void setRegisterValue(int idx, int val)
+		{
+			if ((idx < 0) || (idx >= CPU.NUMREG))
+			{
+				return;    // invalid index
+			}
+
+			this.registers[idx] = val;
+		}//setRegisterValue
+
+
+
+		/**
+		 * toString       **DEBUGGING**
+		 *
+		 * @return a string representation of this class
+		 */
+		public String toString()
+		{
+			String result = "Process id " + processId + " ";
+			if (isBlocked())
+			{
+				result = result + "is BLOCKED for ";
+				if (blockedForOperation == SYSCALL_OPEN)
+				{
+					result = result + "OPEN";
+				}
+				else if (blockedForOperation == SYSCALL_READ)
+				{
+					result = result + "READ @" + blockedForAddr;
+				}
+				else if (blockedForOperation == SYSCALL_WRITE)
+				{
+					result = result + "WRITE @" + blockedForAddr;
+				}
+				else  
+				{
+					result = result + "unknown reason!";
+				}
+				for(DeviceInfo di : m_devices)
+				{
+					if (di.getDevice() == blockedForDevice)
+					{
+						result = result + " on device #" + di.getId();
+						break;
+					}
+				}
+				result = result + ": ";
+			}
+			else if (this == m_currProcess)
+			{
+				result = result + "is RUNNING: ";
+			}
+			else
+			{
+				result = result + "is READY: ";
+			}
+
+			if (registers == null)
+			{
+				result = result + "<never saved>";
+				return result;
+			}
+
+			for(int i = 0; i < CPU.NUMGENREG; i++)
+			{
+				result = result + ("r" + i + "=" + registers[i] + " ");
+			}//for
+			result = result + ("PC=" + registers[CPU.PC] + " ");
+			result = result + ("SP=" + registers[CPU.SP] + " ");
+			result = result + ("BASE=" + registers[CPU.BASE] + " ");
+			result = result + ("LIM=" + registers[CPU.LIM] + " ");
+
+			return result;
+		}//toString
+
+		/**
+		 * compareTo              
+		 *
+		 * compares this to another ProcessControlBlock object based on the BASE addr
+		 * register.  Read about Java's Collections class for info on
+		 * how this method can be quite useful to you.
+		 */
+		public int compareTo(ProcessControlBlock pi)
+		{
+			return this.registers[CPU.BASE] - pi.registers[CPU.BASE];
+		}
+
+		/**
+		 * push
+		 * 
+		 * Pushes data to the stack of this process
+		 * 
+		 * @param data
+		 */
+		@SuppressWarnings("unused")
+		public void push(int data) {
+			int sp = getRegisterValue(CPU.SP) + 1;
+			setRegisterValue(CPU.SP, sp);
+			m_RAM.write(sp, data);
+		}
 		
-		 /**
-         * save
-         *
-         * saves the current CPU registers into this.registers
-         *
-         * @param cpu  the CPU object to save the values from
-         */
-        public void save(CPU cpu)
-        {
-            int[] regs = cpu.getRegisters();
-            this.registers = new int[CPU.NUMREG];
-            for(int i = 0; i < CPU.NUMREG; i++)
-            {
-                this.registers[i] = regs[i];
-            }
-        }//save
-         
-        /**
-         * restore
-         *
-         * restores the saved values in this.registers to the current CPU's
-         * registers
-         *
-         * @param cpu  the CPU object to restore the values to
-         */
-        public void restore(CPU cpu)
-        {
-            int[] regs = cpu.getRegisters();
-            for(int i = 0; i < CPU.NUMREG; i++)
-            {
-                regs[i] = this.registers[i];
-            }
+		/**
+		 * 
+		 * pop
+		 * 
+		 * Pops data from this processes stack
+		 * 
+		 * @return
+		 */
+		public int pop() {
+			int sp = getRegisterValue(CPU.SP) - 1;
+			setRegisterValue(CPU.SP, sp);
+			return m_RAM.read(sp+1);
+			
+		}
 
-        }//restore
-         
-        /**
-         * block
-         *
-         * blocks the current process to wait for I/O.  The caller is
-         * responsible for calling {@link CPU#scheduleNewProcess}
-         * after calling this method.
-         *
-         * @param cpu   the CPU that the process is running on
-         * @param dev   the Device that the process must wait for
-         * @param op    the operation that the process is performing on the
-         *              device.  Use the SYSCALL constants for this value.
-         * @param addr  the address the process is reading from (for SYSCALL_READ)
-         * 
-         */
-        public void block(CPU cpu, Device dev, int op, int addr)
-        {
-            blockedForDevice = dev;
-            blockedForOperation = op;
-            blockedForAddr = addr;
-            
-            debugPrintln("Process " + m_currProcess.getProcessId() + " has been blocked");
-            
-        }//block
-        
-        /**
-         * unblock
-         *
-         * moves this process from the Blocked (waiting) state to the Ready
-         * state. 
-         *
-         */
-        public void unblock()
-        {
-            blockedForDevice = null;
-            blockedForOperation = -1;
-            blockedForAddr = -1;
-            
-        }//block
-        
-        /**
-         * isBlocked
-         *
-         * @return true if the process is blocked
-         */
-        public boolean isBlocked()
-        {
-            return (blockedForDevice != null);
-        }//isBlocked
-         
-        /**
-         * isBlockedForDevice
-         *
-         * Checks to see if the process is blocked for the given device,
-         * operation and address.  If the operation is not an open, the given
-         * address is ignored.
-         *
-         * @param dev   check to see if the process is waiting for this device
-         * @param op    check to see if the process is waiting for this operation
-         * @param addr  check to see if the process is reading from this address
-         *
-         * @return true if the process is blocked by the given parameters
-         */
-        public boolean isBlockedForDevice(Device dev, int op, int addr)
-        {
-            if ( (blockedForDevice == dev) && (blockedForOperation == op) )
-            {
-                if (op == SYSCALL_OPEN)
-                {
-                    return true;
-                }
-
-                if (addr == blockedForAddr)
-                {
-                    return true;
-                }
-            }//if
-
-            return false;
-        }//isBlockedForDevice
-         
-        /**
-         * toString       **DEBUGGING**
-         *
-         * @return a string representation of this class
-         */
-        public String toString()
-        {
-            String result = "Process id " + processId + " ";
-            if (isBlocked())
-            {
-                result = result + "is BLOCKED: ";
-            }
-            else if (this == m_currProcess)
-            {
-                result = result + "is RUNNING: ";
-            }
-            else
-            {
-                result = result + "is READY: ";
-            }
-
-            if (registers == null)
-            {
-                result = result + "<never saved>";
-                return result;
-            }
-            
-            for(int i = 0; i < CPU.NUMGENREG; i++)
-            {
-                result = result + ("r" + i + "=" + registers[i] + " ");
-            }//for
-            result = result + ("PC=" + registers[CPU.PC] + " ");
-            result = result + ("SP=" + registers[CPU.SP] + " ");
-            result = result + ("BASE=" + registers[CPU.BASE] + " ");
-            result = result + ("LIM=" + registers[CPU.LIM] + " ");
-
-            return result;
-        }//toString
-         
-        /**
-         * compareTo              
-         *
-         * compares this to another ProcessControlBlock object based on the BASE addr
-         * register.  Read about Java's Collections class for info on
-         * how this method can be quite useful to you.
-         */
-        public int compareTo(ProcessControlBlock pi)
-        {
-            return this.registers[CPU.BASE] - pi.registers[CPU.BASE];
-        }
-
-    }//class ProcessControlBlock
+	}//class ProcessControlBlock
 
 	/**
 	 * class DeviceInfo
@@ -1072,6 +1403,7 @@ public class SOS implements CPU.TrapHandler
 			return procs.size() == 0;
 		}
 
+
 	}//class DeviceInfo
 
 
@@ -1093,6 +1425,7 @@ public class SOS implements CPU.TrapHandler
 	{
 		m_devices.add(new DeviceInfo(dev, id));
 	}//registerDevice
+
 
 
 

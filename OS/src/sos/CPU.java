@@ -18,7 +18,7 @@ import org.omg.CosNaming.IstringHelper;
  */
 
 @SuppressWarnings("unused")
-public class CPU
+public class CPU implements Runnable
 {
 
 	//======================================================================
@@ -56,12 +56,17 @@ public class CPU
 	//Misc constants
 	public static final int NUMGENREG = PC; // the number of general registers
 	public static final int INSTRSIZE = 4;  // number of ints in a single instr +
+	public static final int STACKITEMSIZE = 1;
 	// args.  (Set to a fixed value for simplicity.)
 
 	//======================================================================
 	//Member variables
 	//----------------------------------------------------------------------
 
+	
+	//TODO: Comment when I figure out what this does
+	private InterruptController m_IC;
+	
 	/**
 	 * specifies whether the CPU should output details of its work
 	 **/
@@ -94,7 +99,7 @@ public class CPU
 	 *
 	 * Initializes all member variables.
 	 */
-	public CPU(RAM ram)
+	public CPU(RAM ram, InterruptController ic)
 	{
 		m_registers = new int[NUMREG];
 		for(int i = 0; i < NUMREG; i++)
@@ -103,6 +108,7 @@ public class CPU
 		}
 		m_RAM = ram;
 
+		m_IC = ic;
 	}//CPU ctor
 
 	/**
@@ -285,7 +291,7 @@ public class CPU
 	public int pop(){
 		//read the value at the top of the stack and store in temp variable
 		int temp = m_RAM.read(getSP());
-		setSP(getSP()- 1); //Decrement stack pointer to "remove" that item from the stack.
+		setSP(getSP() - STACKITEMSIZE); //Decrement stack pointer to "remove" that item from the stack.
 		return temp; //return the value that was retrieved from the top of the stack
 	}
 
@@ -298,7 +304,7 @@ public class CPU
 	 * @param value to be pushed onto the stack 
 	 */
 	public void push(int val){
-		setSP(getSP() +1); //increment SP (to "add" a new entry to the stack)
+		setSP(getSP() + STACKITEMSIZE); //increment SP (to "add" a new entry to the stack)
 
 		//The value of this new entry is set equal to the value of the register
 		m_RAM.write(getSP(), val); 
@@ -336,6 +342,8 @@ public class CPU
 		//while we are still in allowed address space
 		while(true){
 
+			checkForIOInterrupt();
+			
 			//Fetch the next instruction from RAM using the PC register
 			instruction = m_RAM.fetch(getPC()); 
 
@@ -415,7 +423,7 @@ public class CPU
 
 
 				if(m_registers[instruction[1]] < m_registers[instruction[2]])
-					setPC(instruction[3]+getBASE() - 4); 
+					setPC(instruction[3]+getBASE() - INSTRSIZE); 
 				//Must decrement by INSTRSIZE since we increment @ end of switch statement
 				//This ensures we branch and execute the specified instruction
 				break;
@@ -481,11 +489,54 @@ public class CPU
 		void interruptIllegalMemoryAccess(int addr);
 		void interruptDivideByZero();
 		void interruptIllegalInstruction(int[] instr);
+		public void interruptIOReadComplete(int devID, int addr, int data);
+        public void interruptIOWriteComplete(int devID, int addr);
 		void systemCall();
 	};//interface TrapHandler
 
 
+	/**
+     * checkForIOInterrupt
+     *
+     * Checks the databus for signals from the interrupt controller and, if
+     * found, invokes the appropriate handler in the operating system.
+     *
+     */
+    private void checkForIOInterrupt()
+    {
+        //If there is no interrupt to process, do nothing
+        if (m_IC.isEmpty())
+        {
+            return;
+        }
+        
+        //Retreive the interrupt data
+        int[] intData = m_IC.getData();
 
+        //Report the data if in verbose mode
+        if (m_verbose)
+        {
+            System.out.println("CPU received interrupt: type=" + intData[0]
+                               + " dev=" + intData[1] + " addr=" + intData[2]
+                               + " data=" + intData[3]);
+        }
+
+        //Dispatch the interrupt to the OS
+        switch(intData[0])
+        {
+            case InterruptController.INT_READ_DONE:
+                m_TH.interruptIOReadComplete(intData[1], intData[2], intData[3]);
+                break;
+            case InterruptController.INT_WRITE_DONE:
+                m_TH.interruptIOWriteComplete(intData[1], intData[2]);
+                break;
+            default:
+                System.out.println("CPU ERROR:  Illegal Interrupt Received.");
+                System.exit(-1);
+                break;
+        }//switch
+
+    }//checkForIOInterrupt
 
 	/**
 	 * registerTrapHandler
