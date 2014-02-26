@@ -111,10 +111,10 @@ public class Program
     /**
      * skipWhite
      *
-     * given a current position in a string, this funciton determines where the
+     * given a current position in a string, this function determines where the
      * next non-whitespace character is
      *
-     * @param line  the string to find the non-whitepsace character in
+     * @param line  the string to find the non-whitespace character in
      * @param i     where to begin searching
      * @return      the location of the non-whitespace character
      * 
@@ -134,7 +134,7 @@ public class Program
     /**
      * skipToken
      *
-     * given a current position in a string, this funciton determines where the
+     * given a current position in a string, this function determines where the
      * next token begins (skipping the current token if any)
      *
      * @param line  the string to find the next token in
@@ -182,7 +182,7 @@ public class Program
     /**
      * parseLabel
      *
-     * parses a single label defintion found in the code and places it in the
+     * parses a single label definition found in the code and places it in the
      * m_labels list
      * 
      * @param line the entire line of text containing the instruction
@@ -300,7 +300,8 @@ public class Program
      * @see        #parseInstruction
      * 
      */
-    private int parseArg(String line, int i)
+    @SuppressWarnings("static-access")
+	private int parseArg(String line, int i)
     {
         String arg = getToken(line, i); // get the argument substring
 
@@ -493,7 +494,7 @@ public class Program
      */
     private int fixOrphans()
     {
-        //For each orphanned label reference...
+        //For each orphaned label reference...
         for(Label o : m_orphans)
         {
             boolean bFound = false; // was this orphan's label found?
@@ -544,7 +545,7 @@ public class Program
      * @param fileName the filename of the file containing the code
      * @param verbose  if set 'true' this will print detailed output as it
      *                 parses
-     * @return         0 is success; anthing else is a failure code
+     * @return         0 is success; anything else is a failure code
      * @see #parseLine
      * 
      */

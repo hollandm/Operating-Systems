@@ -11,6 +11,7 @@ import java.util.*;
  * @see Sim
  *
  */
+@SuppressWarnings("unused")
 public class RAM
 {
     //member variables
@@ -117,7 +118,7 @@ public class RAM
      *
      * saves an integer to the simulated RAM
      *
-     * @param addr  the addrss to write to
+     * @param addr  the address to write to
      * @param val   the value to write
      */
     public void write(int addr, int val)
