@@ -24,7 +24,7 @@ TRAP           #open the device
 
 #Check for failure
 POP r4         #get return code from the system call
-SET r0 0       #Succes code
+SET r0 0       #Success code
 BNE r0 r4 exit #exit program on error
 
 #Reserve the console device
@@ -55,6 +55,11 @@ BNE r0 r4 exit #exit program on error
 #save the keystroke
 POP r4         #save the value in r4
 
+#yield the CPU to other processes
+SET r0 8       #YIELD sys call id
+PUSH r0        #push the sys call id onto the stack
+TRAP           #make the system call
+   
 #Write the value to the console
 SET r0 1       #device #1 (console output)
 PUSH r0        #push device number
@@ -66,7 +71,7 @@ TRAP           #system call to write the value
 
 #Check for failure
 POP r4         #get return code from the system call
-SET r0 0       #Succes code
+SET r0 0       #Success code
 BNE r0 r4 exit #exit program on error
 
 #close the keyboard device
