@@ -274,7 +274,7 @@ public class CPU implements Runnable
 			System.out.println("TRAP ");
 			break;
 		default:        // should never be reached
-			System.out.println("?? ");
+			System.out.println("?? " + instr[0]);
 			break;          
 		}//switch
 
@@ -289,10 +289,19 @@ public class CPU implements Runnable
 	 * @return returns the value retrieved from the stack 
 	 */
 	public int pop(){
+		
+		
 		//read the value at the top of the stack and store in temp variable
-		int temp = m_RAM.read(getSP());
-		setSP(getSP() - STACKITEMSIZE); //Decrement stack pointer to "remove" that item from the stack.
-		return temp; //return the value that was retrieved from the top of the stack
+		int sp = getSP() + STACKITEMSIZE;
+		
+		if (!isMemAddressInRange(sp)) {
+			System.out.println("Trying to pop out side of the program memory");
+			return -1;
+		}
+		
+		setSP(getSP() + STACKITEMSIZE); //Decrement stack pointer to "remove" that item from the stack.
+		
+		return m_RAM.read(sp - STACKITEMSIZE); //return the value that was retrieved from the top of the stack
 	}
 
 
@@ -304,10 +313,23 @@ public class CPU implements Runnable
 	 * @param value to be pushed onto the stack 
 	 */
 	public void push(int val){
-		setSP(getSP() + STACKITEMSIZE); //increment SP (to "add" a new entry to the stack)
+		int sp = getSP() - STACKITEMSIZE;
+		
+
+		if (!isMemAddressInRange(sp)) {
+			System.out.println("ERROR: Trying to push out side of the program memory");
+			return;
+		}
+		
+		if (sp < this.getBASE()) {
+			System.out.println("WARNING: Pushing over asm code");
+			return;
+		}
+		
+		setSP(sp); //increment SP (to "add" a new entry to the stack)
 
 		//The value of this new entry is set equal to the value of the register
-		m_RAM.write(getSP(), val); 
+		m_RAM.write(sp, val); 
 	}
 
 	/**

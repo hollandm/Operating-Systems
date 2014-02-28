@@ -1067,6 +1067,7 @@ public class SOS implements CPU.TrapHandler
 			{
 				regs[i] = this.registers[i];
 			}
+			
 
 		}//restore
 
