@@ -64,7 +64,9 @@ public class CPU implements Runnable
 	//----------------------------------------------------------------------
 
 	
-	//TODO: Comment when I figure out what this does
+	/**
+	 * Handles interrupts!
+	 */
 	private InterruptController m_IC;
 	
 	/**
@@ -318,11 +320,6 @@ public class CPU implements Runnable
 
 		if (!isMemAddressInRange(sp)) {
 			System.out.println("ERROR: Trying to push out side of the program memory");
-			return;
-		}
-		
-		if (sp < this.getBASE()) {
-			System.out.println("WARNING: Pushing over asm code");
 			return;
 		}
 		

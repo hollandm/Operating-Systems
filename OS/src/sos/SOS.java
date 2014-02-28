@@ -55,7 +55,7 @@ public class SOS implements CPU.TrapHandler
 	 * This flag causes the SOS to print lots of potentially helpful
 	 * status messages
 	 **/
-	public static final boolean m_verbose = false;
+	public static final boolean m_verbose = true;
 
 	/**
 	 * The CPU the operating system is managing.
@@ -299,7 +299,7 @@ public class SOS implements CPU.TrapHandler
 
 		m_currProcess = newProcess;
 
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has begun running");
+//		debugPrintln("The process " + m_currProcess.getProcessId() + " has begun running");
 
 		m_currProcess.restore(m_CPU);
 
@@ -413,49 +413,6 @@ public class SOS implements CPU.TrapHandler
 		m_currProcess = newProcess;
 
 		debugPrintln("The process " + m_currProcess.getProcessId() + " has been added into RAM");
-
-
-		//		NOTE: Nux's sample ouput seems to indicate that he doesn't make the new process the currently 
-		//		running process. This might be an issue down the road
-		//		
-		//		On further inspection I think it does need to be created without being made
-		//		the main process since it will eventually make its way to cpu who will increment
-		//		the pc of a process expecting it to be the old process.
-		//		
-		//		My attempt at doing that was unsuccessful...
-
-		/*
-		 * Begin create non-running process experiment
-		 * 
-		ProcessControlBlock newProcess = new ProcessControlBlock(m_nextProcessID);
-		++m_nextProcessID;
-		m_processes.add(newProcess);
-
-
-		int newBase = m_nextLoadPos;
-		m_nextLoadPos += allocSize;
-
-		newProcess.save(m_CPU);
-
-		newProcess.setRegisterValue(CPU.BASE, newBase);
-		newProcess.setRegisterValue(CPU.PC, newBase);
-		newProcess.setRegisterValue(CPU.LIM, allocSize);
-		newProcess.setRegisterValue(CPU.SP, newBase+allocSize);
-
-		//load the program into memory so it can execute
-		for(int i = 0; i < testProcess.length; i++){
-			m_RAM.write(i + newBase, testProcess[i]);
-		}//for
-
-		debugPrintln("The process " + newProcess.getProcessId() + " has been added into RAM");
-
-//		if (m_currProcess.registers == null) {
-		m_currProcess.save(m_CPU);
-		m_currProcess = newProcess;
-		m_currProcess.restore(m_CPU);
-//		}
-		 * end begin non running process 
-		 */
 
 
 	}//createProcess
@@ -580,8 +537,12 @@ public class SOS implements CPU.TrapHandler
 	}//syscallExec
 
 
-
-	//TODO:<method header needed>
+	/**
+	 * syscallYield
+	 * 
+	 * Description: puts the current process to sleep (moves it to the ready state)
+	 * 
+	 */
 	private void syscallYield()
 	{
 
@@ -683,7 +644,7 @@ public class SOS implements CPU.TrapHandler
 		}
 
 
-		debugPrintln("Process " + m_currProcess.getProcessId() + " opened device " + deviceNum);
+//		debugPrintln("Process " + m_currProcess.getProcessId() + " opened device " + deviceNum);
 		
 		deviceInfo.addProcess(m_currProcess);
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
@@ -720,12 +681,12 @@ public class SOS implements CPU.TrapHandler
 		//Again addr is left as 0 since as far as I can tell it does not apply
 
 
-		debugPrintln("Process " + m_currProcess.getProcessId() + " closed device " + deviceNum);
+//		debugPrintln("Process " + m_currProcess.getProcessId() + " closed device " + deviceNum);
 		
 		if (blockedProcess != null) {
 			blockedProcess.unblock();
 
-			debugPrintln("Process " + blockedProcess.getProcessId() + " opened device " + deviceNum);
+//			debugPrintln("Process " + blockedProcess.getProcessId() + " opened device " + deviceNum);
 		} else {
 			System.out.print("");
 		}
@@ -923,7 +884,12 @@ public class SOS implements CPU.TrapHandler
 	/**
 	 * interruptIOReadComplete
 	 * 
-	 * TODO: Method Header
+	 * Description: when a device finishes a read intruction it calls this function to interrupt
+	 * 		the currently running process to hand off the read data to the relevent proccess
+	 * 
+	 * @param devID - the id of the device that was being written to
+	 * @param addr - the address we wrote to
+	 * @param data - the data returned from the read
 	 */
 	@Override
 	public void interruptIOReadComplete(int devID, int addr, int data) {
@@ -933,12 +899,11 @@ public class SOS implements CPU.TrapHandler
 		ProcessControlBlock blocked = selectBlockedProcess(devInfo.getDevice(), SYSCALL_READ, addr);
 
 		if (blocked == null) {
-			//			TODO: if things break this might be why.
 			System.out.println("Null blocked process, interruptIOReadComplete");
 			System.exit(0);
 		}
 
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been recived an interupt from device " + devID);
+//		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
 		blocked.unblock();
 
 		//Push the data we received from the read to the reading processes stack
@@ -951,7 +916,15 @@ public class SOS implements CPU.TrapHandler
 
 	}
 
-	//	TODO: Method header
+	/**
+	 * interruptIOWriteComplete
+	 * 
+	 * Description: when a device finishes a write intruction it calls this function to interupt
+	 * 		the currently running process to notify the relavent process that the operation completed
+	 * 
+	 * @param devID - the id of the device that was being written to
+	 * @param addr - the address we wrote to
+	 */
 	@Override
 	public void interruptIOWriteComplete(int devID, int addr) {
 		DeviceInfo devInfo = getDeviceInfo(devID);
@@ -961,16 +934,14 @@ public class SOS implements CPU.TrapHandler
 		
 		System.out.println("Device Procs Size: "+devInfo.procs.size());
 		if (blocked == null) {
-			//			TODO: if things break this might be why.
-			//			TODO: Fix Something. RunMultiple2 doesn't break if I step through it. Hitting continue does break it. Must be a thread problem.
-//			System.out.println("Null blocked process, interruptIOWriteComplete");
+			System.out.println("Null blocked process, interruptIOWriteComplete");
 			System.exit(0);
 		}
 
 		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
 		
 		blocked.unblock();
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been recived an interupt from device " + devID);
+//		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
 	}
 
 
@@ -1012,7 +983,7 @@ public class SOS implements CPU.TrapHandler
 		 * a unique id for this process
 		 */
 		private int processId = 0;
-
+		
 		/**
 		 * constructor
 		 *
