@@ -545,9 +545,7 @@ public class SOS implements CPU.TrapHandler
 	 */
 	private void syscallYield()
 	{
-
 		scheduleNewProcess();
-
 	}//syscallYield
 
 
@@ -944,7 +942,14 @@ public class SOS implements CPU.TrapHandler
 //		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
 	}
 
-
+	/**
+	 * 
+	 */
+	public void interruptClock() {
+		scheduleNewProcess();
+	}
+	
+	
 	//======================================================================
 	// Inner Classes
 	//----------------------------------------------------------------------
@@ -956,6 +961,34 @@ public class SOS implements CPU.TrapHandler
 	 */
 	private class ProcessControlBlock
 	{
+		/**
+         * the time it takes to load and save registers, specified as a number
+         * of CPU ticks
+         */
+        private static final int SAVE_LOAD_TIME = 30;
+        
+        /**
+         * Used to store the system time when a process is moved to the Ready
+         * state.
+         */
+        private int lastReadyTime = -1;
+        
+        /**
+         * Used to store the number of times this process has been in the ready
+         * state
+         */
+        private int numReady = 0;
+        
+        /**
+         * Used to store the maximum starve time experienced by this process
+         */
+        private int maxStarve = -1;
+        
+        /**
+         * Used to store the average starve time for this process
+         */
+        private double avgStarve = 0;
+		
 		/**
 		 * These are the process' current registers.  If the process is in the
 		 * "running" state then these are out of date
@@ -1003,45 +1036,78 @@ public class SOS implements CPU.TrapHandler
 			return this.processId;
 		}
 
-
-
-
 		/**
-		 * save
-		 *
-		 * saves the current CPU registers into this.registers
-		 *
-		 * @param cpu  the CPU object to save the values from
-		 */
-		public void save(CPU cpu)
-		{
-			int[] regs = cpu.getRegisters();
-			this.registers = new int[CPU.NUMREG];
-			for(int i = 0; i < CPU.NUMREG; i++)
-			{
-				this.registers[i] = regs[i];
-			}
-		}//save
+         * @return the last time this process was put in the Ready state
+         */
+        public long getLastReadyTime()
+        {
+            return lastReadyTime;
+        }
 
-		/**
-		 * restore
-		 *
-		 * restores the saved values in this.registers to the current CPU's
-		 * registers
-		 *
-		 * @param cpu  the CPU object to restore the values to
-		 */
-		public void restore(CPU cpu)
-		{
-			int[] regs = cpu.getRegisters();
-			for(int i = 0; i < CPU.NUMREG; i++)
-			{
-				regs[i] = this.registers[i];
-			}
-			
 
-		}//restore
+        /**
+         * save
+         *
+         * saves the current CPU registers into this.registers
+         *
+         * @param cpu  the CPU object to save the values from
+         */
+        public void save(CPU cpu)
+        {
+            //A context switch is expensive.  We simluate that here by 
+            //adding ticks to m_CPU
+            m_CPU.addTicks(SAVE_LOAD_TIME);
+            
+            //Save the registers
+            int[] regs = cpu.getRegisters();
+            this.registers = new int[CPU.NUMREG];
+            for(int i = 0; i < CPU.NUMREG; i++)
+            {
+                this.registers[i] = regs[i];
+            }
 
+            //Assuming this method is being called because the process is moving
+            //out of the Running state, record the current system time for
+            //calculating starve times for this process.  If this method is
+            //being called for a Block, we'll adjust lastReadyTime in the
+            //unblock method.
+            numReady++;
+            lastReadyTime = m_CPU.getTicks();
+            
+        }//save
+         
+        /**
+         * restore
+         *
+         * restores the saved values in this.registers to the current CPU's
+         * registers
+         *
+         * @param cpu  the CPU object to restore the values to
+         */
+        public void restore(CPU cpu)
+        {
+            //A context switch is expensive.  We simulate that here by 
+            //adding ticks to m_CPU
+            m_CPU.addTicks(SAVE_LOAD_TIME);
+            
+            //Restore the register values
+            int[] regs = cpu.getRegisters();
+            for(int i = 0; i < CPU.NUMREG; i++)
+            {
+                regs[i] = this.registers[i];
+            }
+
+            //Record the starve time statistics
+            int starveTime = m_CPU.getTicks() - lastReadyTime;
+            if (starveTime > maxStarve)
+            {
+                maxStarve = starveTime;
+            }
+            double d_numReady = (double)numReady;
+            avgStarve = avgStarve * (d_numReady - 1.0) / d_numReady;
+            avgStarve = avgStarve + (starveTime * (1.0 / d_numReady));
+        }//restore
+        
 		/**
 		 * block
 		 *
@@ -1067,19 +1133,25 @@ public class SOS implements CPU.TrapHandler
 		}//block
 
 		/**
-		 * unblock
-		 *
-		 * moves this process from the Blocked (waiting) state to the Ready
-		 * state. 
-		 *
-		 */
-		public void unblock()
-		{
-			blockedForDevice = null;
-			blockedForOperation = -1;
-			blockedForAddr = -1;
-
-		}//block
+         * unblock
+         *
+         * moves this process from the Blocked (waiting) state to the Ready
+         * state. 
+         *
+         */
+        public void unblock()
+        {
+            //Reset the info about the block
+            blockedForDevice = null;
+            blockedForOperation = -1;
+            blockedForAddr = -1;
+            
+            //Assuming this method is being called because the process is moving
+            //from the Blocked state to the Ready state, record the current
+            //system time for calculating starve times for this process.
+            lastReadyTime = m_CPU.getTicks();
+            
+        }//unblock
 
 		/**
 		 * isBlocked
@@ -1360,6 +1432,7 @@ public class SOS implements CPU.TrapHandler
 	{
 		m_devices.add(new DeviceInfo(dev, id));
 	}//registerDevice
+
 
 
 

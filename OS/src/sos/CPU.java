@@ -57,6 +57,8 @@ public class CPU implements Runnable
 	public static final int NUMGENREG = PC; // the number of general registers
 	public static final int INSTRSIZE = 4;  // number of ints in a single instr +
 	public static final int STACKITEMSIZE = 1;
+	
+	public static final int CLOCK_FREQ = 5;
 	// args.  (Set to a fixed value for simplicity.)
 
 	//======================================================================
@@ -91,6 +93,8 @@ public class CPU implements Runnable
 	 * simply be an address that the PC register is set to.
 	 */
 	private TrapHandler m_TH = null;
+	
+	private int m_ticks = 0;
 
 	//======================================================================
 	//Methods
@@ -113,6 +117,15 @@ public class CPU implements Runnable
 		m_IC = ic;
 	}//CPU ctor
 
+	/**
+	 * getTicks
+	 * 
+	 * @return the number of cpu cycles that have elapsed
+	 */
+	public int getTicks() {
+		return m_ticks;
+	}
+	
 	/**
 	 * getPC
 	 *
@@ -163,6 +176,13 @@ public class CPU implements Runnable
 		return m_registers;
 	}
 
+	/**
+	 * 
+	 */
+	public void addTicks(int numTicks) {
+		m_ticks += numTicks;
+	}
+	
 	/**
 	 * setPC
 	 *
@@ -488,7 +508,14 @@ public class CPU implements Runnable
 				break;          
 			}//switch
 
+
+			++m_ticks;
+			if (m_ticks % CLOCK_FREQ == 0) {
+				m_TH.interruptClock();
+			}
+			
 			setPC(getPC() + INSTRSIZE); //update program counter
+			
 		} //while
 
 	}//run
@@ -510,6 +537,7 @@ public class CPU implements Runnable
 		void interruptIllegalInstruction(int[] instr);
 		public void interruptIOReadComplete(int devID, int addr, int data);
         public void interruptIOWriteComplete(int devID, int addr);
+        public void interruptClock();
 		void systemCall();
 	};//interface TrapHandler
 
