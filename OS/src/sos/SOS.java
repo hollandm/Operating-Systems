@@ -242,97 +242,40 @@ public class SOS implements CPU.TrapHandler
 	}//removeCurrentProcess
 
 	/**
+	 * getProcess
+	 * 
+	 * selects a process to run in a manner to minimize starvation and process switching
 	 * 
 	 */
-	int lastProcessRunning = 0;
-
 	ProcessControlBlock getProcess() {
-		ProcessControlBlock selected = null;
 
+		//This method worked really great
 		//		m_CPU.addTicks(-1000);
 
-		//Always let the idle process finish
+		//Abusing the system to allow a process to avoid running into block processes
+		//		if (m_currProcess.isBlocked()) {
+		//			try {
+		//				Thread.sleep(5);
+		//			} catch (InterruptedException e) {
+		//				// TODO Auto-generated catch block
+		//				e.printStackTrace();
+		//			}
+		//		}
+		//		return getRandomProcess();
+
+
+		//Always let the idle process finish to avoid extra switching
 		if (m_currProcess.getProcessId() == SOS.IDLE_PROC_ID) {
 			if (m_processes.contains(m_currProcess)) 
 				return m_currProcess;
 		}
 
+		ProcessControlBlock selected = null;
 
 
-		//Try 3
-
-		//		if (!m_currProcess.isBlocked() && m_processes.contains(m_currProcess)) {
-		//
-		//			int minTicks = m_currProcess.numStarvationTicks + 2000;
-		//
-		//			for (ProcessControlBlock pcb : m_processes) {
-		//
-		//				if (!pcb.isBlocked()) {
-		//					if (!pcb.equals(m_currProcess)) {
-		//						++pcb.numStarvationTicks;	
-		//
-		//						if (pcb.numStarvationTicks > minTicks) {
-		//							return pcb;
-		//						}
-		//					}
-		//				}
-		//			}
-		//		} else {
-		//			
-		//			int minValue = Integer.MAX_VALUE;
-		//			ProcessControlBlock min = null;
-		//			for (ProcessControlBlock pcb : m_processes) {
-		//				if (!pcb.isBlocked()) {
-		//					
-		//					if (pcb.numStarvationTicks < minValue) {
-		//						min = pcb;
-		//						minValue = pcb.numStarvationTicks;
-		//					}
-		//					
-		//				}
-		//			}
-		//			
-		//			return min;
-		//			
-		//		}
-
-
-
-
-
-		//Try 2
-
-		//		if (m_processes.contains(m_currProcess)) {
-		//			if (m_currProcess.getProcessId() == SOS.IDLE_PROC_ID)
-		//				return m_currProcess;
-		//			
-		//			if (!m_currProcess.isBlocked())
-		//				return m_currProcess;
-		//		}
-		//			
-		//		for (int i = 0; i < m_processes.size(); ++i) {
-		//			if (!m_processes.get(i).isBlocked()) {
-		//				lastProcessRunning = i;
-		//				return m_processes.get(i);
-		//			}
-		//		}
-		//
-		//		getRandomProcess();
-		//		getRandomProcess();
-
-		//Abusing the system to allow a process to avoid running into block processes
-//		if (m_currProcess.isBlocked()) {
-//			try {
-//				Thread.sleep(5);
-//			} catch (InterruptedException e) {
-//				// TODO Auto-generated catch block
-//				e.printStackTrace();
-//			}
-//		}
-		//		return getRandomProcess();
-
-		//Try 1
+		//idle process tick minimization loop
 		for (int i = 0; i < m_processes.capacity(); ++i) {
+
 			double minValue = Double.MAX_VALUE;
 			for (ProcessControlBlock s : m_processes) {
 				if (!s.isBlocked() && s.avgStarve < minValue) {
@@ -341,10 +284,51 @@ public class SOS implements CPU.TrapHandler
 				}
 			}
 		}
-		
-		//Bogo-sort m_processes, take first non-blocked process.
-		
+
 		return selected;
+
+		//Bogo-sort m_processes, take first non-blocked process.
+
+		//		ArrayList<ProcessControlBlock> l;
+		//		
+		//		bogoLoop:
+		//		while (true) {
+		//			
+		//			l = new ArrayList<>();
+		//			for (ProcessControlBlock pcb : m_processes)
+		//				bogoRandomInsert(l, pcb);
+		//			
+		//			for (int i = 1; i < l.size(); ++i) {
+		//				ProcessControlBlock currNode = l.get(i-1);
+		//				ProcessControlBlock nextNode = l.get(i);
+		//				
+		//				if (currNode.avgStarve > nextNode.avgStarve)
+		//					continue bogoLoop;
+		//			}
+		//			
+		//			break bogoLoop;
+		//		}
+		//		
+		//		if (l.get(0).avgStarve > m_currProcess.avgStarve + 300) {
+		//			return l.get(0);
+		//		} else {
+		//			return m_currProcess;
+		//		}
+
+	}
+
+	/**
+	 * Helper Method for bogo sort
+	 * 
+	 * @param l - the array list to add things into
+	 * @param pcb - the pcb to add to the list
+	 */
+	public void bogoRandomInsert(ArrayList<ProcessControlBlock> l, ProcessControlBlock pcb) {
+
+		int random = (int)(Math.random()*l.size());
+
+		l.add(random, pcb);
+
 	}
 
 	/**
@@ -391,7 +375,7 @@ public class SOS implements CPU.TrapHandler
 			System.exit(0);
 		}
 
-//		ProcessControlBlock newProcess = getRandomProcess();
+		//		ProcessControlBlock newProcess = getRandomProcess();
 		ProcessControlBlock newProcess = getProcess();
 
 		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
