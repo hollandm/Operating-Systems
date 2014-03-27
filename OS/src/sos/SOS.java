@@ -321,25 +321,29 @@ public class SOS implements CPU.TrapHandler
 		//		getRandomProcess();
 
 		//Abusing the system to allow a process to avoid running into block processes
-		if (m_currProcess.isBlocked()) {
-			try {
-				Thread.sleep(10);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
+//		if (m_currProcess.isBlocked()) {
+//			try {
+//				Thread.sleep(5);
+//			} catch (InterruptedException e) {
+//				// TODO Auto-generated catch block
+//				e.printStackTrace();
+//			}
+//		}
 		//		return getRandomProcess();
 
 		//Try 1
-		double minValue = Double.MAX_VALUE;
-		for (ProcessControlBlock s : m_processes) {
-			if (!s.isBlocked() && s.avgStarve < minValue) {
-				selected = s;
-				minValue = s.avgStarve + 300;
+		for (int i = 0; i < m_processes.capacity(); ++i) {
+			double minValue = Double.MAX_VALUE;
+			for (ProcessControlBlock s : m_processes) {
+				if (!s.isBlocked() && s.avgStarve < minValue) {
+					selected = s;
+					minValue = s.avgStarve + 300;
+				}
 			}
 		}
-
+		
+		//Bogo-sort m_processes, take first non-blocked process.
+		
 		return selected;
 	}
 
@@ -989,8 +993,8 @@ public class SOS implements CPU.TrapHandler
 	/**
 	 * interruptIOReadComplete
 	 * 
-	 * Description: when a device finishes a read intruction it calls this function to interrupt
-	 * 		the currently running process to hand off the read data to the relevent proccess
+	 * Description: when a device finishes a read instruction it calls this function to interrupt
+	 * 		the currently running process to hand off the read data to the relevant process
 	 * 
 	 * @param devID - the id of the device that was being written to
 	 * @param addr - the address we wrote to
