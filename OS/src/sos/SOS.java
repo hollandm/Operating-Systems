@@ -57,7 +57,7 @@ public class SOS implements CPU.TrapHandler
 	 * This flag causes the SOS to print lots of potentially helpful
 	 * status messages
 	 **/
-	public static final boolean m_verbose = false;
+	public static final boolean m_verbose = true;
 
 	/**
 	 * The CPU the operating system is managing.
@@ -228,6 +228,7 @@ public class SOS implements CPU.TrapHandler
 	 */
 	public void removeCurrentProcess()
 	{
+		printProcessTable();
 		debugPrintln("The process " + m_currProcess.getProcessId() + " has been removed from RAM");
 
 		m_processes.remove(m_currProcess);
@@ -368,7 +369,7 @@ public class SOS implements CPU.TrapHandler
 	public void scheduleNewProcess()
 	{
 
-		printProcessTable();
+//		printProcessTable();
 
 		if (m_processes.isEmpty()) {
 			System.out.println("No more processes available");
