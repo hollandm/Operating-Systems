@@ -119,7 +119,7 @@ public class SOS implements CPU.TrapHandler
 
 		//Starting at 0 since it encompasses the entirety of ram
 		MemBlock mb = new MemBlock(0, r.getSize());
-
+		m_freeList.add(mb);
 
 
 	}//SOS ctor
@@ -1076,7 +1076,7 @@ public class SOS implements CPU.TrapHandler
 	{
 
 		if (m_freeList.isEmpty()) {
-			//TODO: 
+			//TODO: constant
 			return -1;
 		}
 
@@ -1099,7 +1099,14 @@ public class SOS implements CPU.TrapHandler
 
 		if (selected == null) {
 			if (totalAvailable >= size) {
-				smartMove(firstEmptyBlock);
+				ProcessControlBlock lastBlock = smartMove(firstEmptyBlock);
+				m_freeList.clear();
+
+				int addr = lastBlock.getRegisterValue(CPU.LIM) + lastBlock.getRegisterValue(CPU.BASE);
+				int remainingSpace = m_RAM.getSize() - addr;
+				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
+				m_freeList.add(newMemblock);
+
 			} else {
 
 				//TODO: Use constant instead of -1
@@ -1129,27 +1136,27 @@ public class SOS implements CPU.TrapHandler
 	//TODO: Header
 	private ProcessControlBlock getNextProcessInMemory(int nextSlotAddress) {
 		int nextProcess = Integer.MAX_VALUE;
-		
+
 		ProcessControlBlock selected = null;
 		for (ProcessControlBlock pcb : m_processes) {
 			int base = pcb.getRegisterValue(CPU.BASE);
-			
+
 			if (base < nextSlotAddress) {
 				continue;
 			}
-			
+
 			if (base < nextProcess ) {
 				nextProcess = base;
 				selected = pcb;
 			}
-			
+
 		}
-		
+
 		return selected;
 	}
-	
+
 	//TODO: Header
-	private int smartMove(int firstEmptyBlock) {
+	private ProcessControlBlock smartMove(int firstEmptyBlock) {
 		// try reallocating memory to make room
 
 		ProcessControlBlock nextProcess = null;
@@ -1171,30 +1178,59 @@ public class SOS implements CPU.TrapHandler
 			nextProcess = pcb;
 		}
 
+		//Base Case: No more processes after the first empty block
 		if (nextProcess == null) {
-//			TODO: Constants
-			return -1;
+			//			TODO: Constants
+			return null;
 		}
-		
-		
-		
+
+
+
 		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
 		int nextSlot = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
 		nextProcess.move(firstEmptyBlock);
-		
-		
+
 		ProcessControlBlock pcb = getNextProcessInMemory(nextSlot);
-		
-		smartMove(pcb.getRegisterValue(CPU.BASE));
-		
-		return 0;
+
+		ProcessControlBlock lastPCB = smartMove(pcb.getRegisterValue(CPU.BASE));
+		if (lastPCB == null) {
+			return pcb;
+		}
+
+		return lastPCB;
 	}
 
-	//<insert method header here>
+	//TODO: <insert method header here>
 	private void freeCurrProcessMemBlock()
 	{
-		//%%%You will implement this method
 
+		int start = m_currProcess.getRegisterValue(CPU.BASE);
+		int size = m_currProcess.getRegisterValue(CPU.LIM);
+
+		MemBlock newSpace = new MemBlock(start, size);
+
+		Vector<MemBlock> delete = new Vector<SOS.MemBlock>();
+		for (MemBlock mem : m_freeList) {
+
+			if (newSpace.compareTo(mem) == mem.getSize()) {
+				newSpace.m_addr = mem.m_addr;
+				newSpace.m_size += mem.m_size;
+				delete.add(mem);
+			}
+
+			if (mem.compareTo(newSpace) == newSpace.getSize()) {
+				newSpace.m_size += mem.m_size;
+				delete.add(mem);
+			}
+
+		}
+
+		//Because we can't delete them while iterating through
+		m_freeList.add(newSpace);
+		for (MemBlock mem : delete) {
+			m_freeList.remove(mem);
+		}
+		
 	}//freeCurrProcessMemBlock
 
 	/**
