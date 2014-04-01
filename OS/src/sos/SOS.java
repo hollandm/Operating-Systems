@@ -149,20 +149,6 @@ public class SOS implements CPU.TrapHandler
 	}
 
 	/*======================================================================
-	 * Memory Block Management Methods
-	 *----------------------------------------------------------------------
-	 */
-
-	//None yet!
-
-	/*======================================================================
-	 * Device Management Methods
-	 *----------------------------------------------------------------------
-	 */
-
-	//None yet!
-
-	/*======================================================================
 	 * Process Management Methods
 	 *----------------------------------------------------------------------
 	 */
@@ -243,22 +229,7 @@ public class SOS implements CPU.TrapHandler
 	 * selects a process to run in a manner to minimize starvation and process switching
 	 * 
 	 */
-	ProcessControlBlock getProcess() {
-
-		//This method worked really great
-		//		m_CPU.addTicks(-1000);
-
-		//Abusing the system to allow a process to avoid running into block processes
-		//		if (m_currProcess.isBlocked()) {
-		//			try {
-		//				Thread.sleep(5);
-		//			} catch (InterruptedException e) {
-		//				// TODO Auto-generated catch block
-		//				e.printStackTrace();
-		//			}
-		//		}
-		//		return getRandomProcess();
-
+	public ProcessControlBlock getProcess() {
 
 		//Always let the idle process finish to avoid extra switching
 		if (m_currProcess.getProcessId() == SOS.IDLE_PROC_ID) {
@@ -282,49 +253,6 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		return selected;
-
-		//Bogo-sort m_processes, take first non-blocked process.
-
-		//		ArrayList<ProcessControlBlock> l;
-		//		
-		//		bogoLoop:
-		//		while (true) {
-		//			
-		//			l = new ArrayList<>();
-		//			for (ProcessControlBlock pcb : m_processes)
-		//				bogoRandomInsert(l, pcb);
-		//			
-		//			for (int i = 1; i < l.size(); ++i) {
-		//				ProcessControlBlock currNode = l.get(i-1);
-		//				ProcessControlBlock nextNode = l.get(i);
-		//				
-		//				if (currNode.avgStarve > nextNode.avgStarve)
-		//					continue bogoLoop;
-		//			}
-		//			
-		//			break bogoLoop;
-		//		}
-		//		
-		//		if (l.get(0).avgStarve > m_currProcess.avgStarve + 300) {
-		//			return l.get(0);
-		//		} else {
-		//			return m_currProcess;
-		//		}
-
-	}
-
-	/**
-	 * Helper Method for bogo sort
-	 * 
-	 * @param l - the array list to add things into
-	 * @param pcb - the pcb to add to the list
-	 */
-	public void bogoRandomInsert(ArrayList<ProcessControlBlock> l, ProcessControlBlock pcb) {
-
-		int random = (int)(Math.random()*l.size());
-
-		l.add(random, pcb);
-
 	}
 
 	/**
@@ -364,14 +292,10 @@ public class SOS implements CPU.TrapHandler
 	public void scheduleNewProcess()
 	{
 
-		//		printProcessTable();
-
 		if (m_processes.isEmpty()) {
 			System.out.println("No more processes available");
 			System.exit(0);
 		}
-
-		//		ProcessControlBlock newProcess = getRandomProcess();
 		ProcessControlBlock newProcess = getProcess();
 
 		if  (m_currProcess != newProcess) {
@@ -386,8 +310,6 @@ public class SOS implements CPU.TrapHandler
 
 
 			m_currProcess = newProcess;
-
-			//		debugPrintln("The process " + m_currProcess.getProcessId() + " has begun running");
 
 			m_currProcess.restore(m_CPU);
 		}
@@ -471,8 +393,6 @@ public class SOS implements CPU.TrapHandler
 		
 		if (newMemory == ALLOC_BLOCK_FAILED) {
 			System.out.println("Alloc Block Failed: requires " + allocSize);
-			//TODO: FOR THE LOVE OF GOD TAKE THIS LINE OUT, LATER though
-			allocBlock(allocSize);
 			return false;
 		}
 
@@ -717,7 +637,7 @@ public class SOS implements CPU.TrapHandler
 
 		//check that the device is sharable and if not then check that it's not already open
 		if (!deviceInfo.getDevice().isSharable() && !deviceInfo.unused()) {
-			//			m_CPU.push(DEVICE_NOT_SHARABLE_ERROR);
+			
 			deviceInfo.addProcess(m_currProcess);
 			debugPrintln("Blocked Process " + m_currProcess.getProcessId() + " on device " + deviceInfo.getId());
 			debugPrintln(m_currProcess.toString());
@@ -939,9 +859,7 @@ public class SOS implements CPU.TrapHandler
 	public void interruptIllegalMemoryAccess(int addr) {
 		System.out.println("Illegal Memory Access of addr: " + addr);
 		
-		m_processes.remove(m_currProcess);
-		scheduleNewProcess();
-//		System.exit(0);
+		removeCurrentProcess();
 
 	}
 
@@ -954,10 +872,8 @@ public class SOS implements CPU.TrapHandler
 	@Override
 	public void interruptDivideByZero() {
 		System.out.println("Divide by Zero Error!");
-		
-		m_processes.remove(m_currProcess);
-		scheduleNewProcess();
-//		System.exit(0);
+
+		removeCurrentProcess();
 	}
 
 	/**
@@ -970,9 +886,7 @@ public class SOS implements CPU.TrapHandler
 	public void interruptIllegalInstruction(int[] instr) {
 		System.out.println("Illegal Intruction!");
 
-		m_processes.remove(m_currProcess);
-		scheduleNewProcess();
-//		System.exit(0);
+		removeCurrentProcess();
 	}
 
 	/**
@@ -995,9 +909,7 @@ public class SOS implements CPU.TrapHandler
 		if (blocked == null) {
 			System.out.println("Null blocked process, interruptIOReadComplete");
 			
-			m_processes.remove(m_currProcess);
-			scheduleNewProcess();
-//			System.exit(0);
+			removeCurrentProcess();
 		}
 
 		//		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
@@ -1008,8 +920,6 @@ public class SOS implements CPU.TrapHandler
 
 		//Push a successful system call indicator to the reading processes stack
 		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
-
-		//		blocked.setRegisterValue(CPU.SP, blockedSP);
 
 	}
 
@@ -1032,16 +942,13 @@ public class SOS implements CPU.TrapHandler
 		System.out.println("Device Procs Size: "+devInfo.procs.size());
 		if (blocked == null) {
 			System.out.println("Null blocked process, interruptIOWriteComplete");
-			
-			m_processes.remove(m_currProcess);
-			scheduleNewProcess();
-//			System.exit(0);
+
+			removeCurrentProcess();
 		}
 
 		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
 
 		blocked.unblock();
-		//		debugPrintln("The process " + m_currProcess.getProcessId() + " has received an interrupt from device " + devID);
 	}
 
 	/**
@@ -1077,6 +984,7 @@ public class SOS implements CPU.TrapHandler
 		int totalAvailable = 0;
 		int firstEmptyBlock = Integer.MAX_VALUE; //The only way it could keep this value would be that m_freeList is empty
 
+		//Look through free memory blocks looking for one that is big enough to store the prgoram
 		MemBlock selected = null;
 		for (MemBlock mem : m_freeList) {
 			totalAvailable += mem.getSize();
@@ -1092,6 +1000,8 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		if (selected == null) {
+			//if their is enough room to allocate the space but it ins't contiguous then
+			//group all processes together
 			if (totalAvailable >= size) {
 				ProcessControlBlock lastBlock = smartMove(firstEmptyBlock);
 				m_freeList.clear();
@@ -1771,8 +1681,6 @@ public class SOS implements CPU.TrapHandler
 		//TODO: <insert method header here>
 		public boolean move(int newBase)
 		{
-
-			//TODO: Should we ensure that we arn't writing over another process?
 
 			if (newBase < 0) {
 				//Something bad has happened
