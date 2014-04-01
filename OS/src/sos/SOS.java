@@ -48,7 +48,9 @@ public class SOS implements CPU.TrapHandler
 	/**This process is used as the idle process' id*/
 	public static final int IDLE_PROC_ID    = 999;  
 
-
+	/**Error to indicate an alloc block failed*/
+	public static final int ALLOC_BLOCK_FAILED = -1;
+	
 	//======================================================================
 	//Member variables
 	//----------------------------------------------------------------------
@@ -184,8 +186,7 @@ public class SOS implements CPU.TrapHandler
 		//Initialize the starting position for this program
 		int baseAddr = allocBlock(progArr.length);
 
-		//TODO: Add constant instead of -1
-		if (baseAddr == -1) {
+		if (baseAddr == ALLOC_BLOCK_FAILED) {
 			System.out.println("AllocBlock Failed for Idle Process");
 			System.exit(0);
 		}
@@ -214,25 +215,6 @@ public class SOS implements CPU.TrapHandler
 		m_processes.add(m_currProcess);
 
 	}//createIdleProcess
-
-	/**
-	 * printProcessTable      **DEBUGGING**
-	 *
-	 * prints all the processes in the process table
-	 */
-	private void printProcessTable()
-	{
-		debugPrintln("");
-		debugPrintln("Process Table (" + m_processes.size() + " processes)");
-		debugPrintln("======================================================================");
-		for(ProcessControlBlock pi : m_processes)
-		{
-			debugPrintln("    " + pi);
-		}//for
-		debugPrintln("----------------------------------------------------------------------");
-
-	}//printProcessTable
-
 	/**
 	 * removeCurrentProcess
 	 * 
@@ -240,12 +222,11 @@ public class SOS implements CPU.TrapHandler
 	 */
 	public void removeCurrentProcess()
 	{
-		printProcessTable();
 		debugPrintln("The process " + m_currProcess.getProcessId() + " has been removed from RAM");
 
 
-		freeCurrProcessMemBlock();
 		m_processes.remove(m_currProcess);
+		freeCurrProcessMemBlock();
 
 		//if no other non-blocked process are available then scheduleNewProcess will not
 		//overwrite m_currProcess. We will allow m_currProcess to continue running until a
@@ -393,14 +374,11 @@ public class SOS implements CPU.TrapHandler
 		//		ProcessControlBlock newProcess = getRandomProcess();
 		ProcessControlBlock newProcess = getProcess();
 
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been moved to the ready state");
-
 		if  (m_currProcess != newProcess) {
 			m_currProcess.save(m_CPU);
 
 			//If their isn't an unblocked process then make an idle process.
 			if (newProcess == null) {
-				//			debugPrintln("Creating Idle Process");
 				createIdleProcess();
 				return;
 			}
@@ -490,9 +468,11 @@ public class SOS implements CPU.TrapHandler
 
 		int newMemory = allocBlock(allocSize);
 
-		//TODO: Add constant instead of -1
-		if (newMemory == -1) {
-			System.out.println("Alloc Block Failed");
+		
+		if (newMemory == ALLOC_BLOCK_FAILED) {
+			System.out.println("Alloc Block Failed: requires " + allocSize);
+			//TODO: FOR THE LOVE OF GOD TAKE THIS LINE OUT, LATER though
+			allocBlock(allocSize);
 			return false;
 		}
 
@@ -958,7 +938,10 @@ public class SOS implements CPU.TrapHandler
 	@Override
 	public void interruptIllegalMemoryAccess(int addr) {
 		System.out.println("Illegal Memory Access of addr: " + addr);
-		System.exit(0);
+		
+		m_processes.remove(m_currProcess);
+		scheduleNewProcess();
+//		System.exit(0);
 
 	}
 
@@ -971,8 +954,10 @@ public class SOS implements CPU.TrapHandler
 	@Override
 	public void interruptDivideByZero() {
 		System.out.println("Divide by Zero Error!");
-		System.exit(0);
-
+		
+		m_processes.remove(m_currProcess);
+		scheduleNewProcess();
+//		System.exit(0);
 	}
 
 	/**
@@ -984,8 +969,10 @@ public class SOS implements CPU.TrapHandler
 	@Override
 	public void interruptIllegalInstruction(int[] instr) {
 		System.out.println("Illegal Intruction!");
-		System.exit(0);
 
+		m_processes.remove(m_currProcess);
+		scheduleNewProcess();
+//		System.exit(0);
 	}
 
 	/**
@@ -1007,7 +994,10 @@ public class SOS implements CPU.TrapHandler
 
 		if (blocked == null) {
 			System.out.println("Null blocked process, interruptIOReadComplete");
-			System.exit(0);
+			
+			m_processes.remove(m_currProcess);
+			scheduleNewProcess();
+//			System.exit(0);
 		}
 
 		//		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
@@ -1026,8 +1016,8 @@ public class SOS implements CPU.TrapHandler
 	/**
 	 * interruptIOWriteComplete
 	 * 
-	 * Description: when a device finishes a write intruction it calls this function to interupt
-	 * 		the currently running process to notify the relavent process that the operation completed
+	 * Description: when a device finishes a write instruction it calls this function to interrupt
+	 * 		the currently running process to notify the relevant process that the operation completed
 	 * 
 	 * @param devID - the id of the device that was being written to
 	 * @param addr - the address we wrote to
@@ -1042,17 +1032,22 @@ public class SOS implements CPU.TrapHandler
 		System.out.println("Device Procs Size: "+devInfo.procs.size());
 		if (blocked == null) {
 			System.out.println("Null blocked process, interruptIOWriteComplete");
-			System.exit(0);
+			
+			m_processes.remove(m_currProcess);
+			scheduleNewProcess();
+//			System.exit(0);
 		}
 
 		blocked.push(SOS.SYSTEM_HANDLER_SUCCESS);
 
 		blocked.unblock();
-		//		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
+		//		debugPrintln("The process " + m_currProcess.getProcessId() + " has received an interrupt from device " + devID);
 	}
 
 	/**
+	 * interruptClock
 	 * 
+	 * schedules a new process
 	 */
 	public void interruptClock() {
 		scheduleNewProcess();
@@ -1076,8 +1071,7 @@ public class SOS implements CPU.TrapHandler
 	{
 
 		if (m_freeList.isEmpty()) {
-			//TODO: constant
-			return -1;
+			return ALLOC_BLOCK_FAILED;
 		}
 
 		int totalAvailable = 0;
@@ -1106,26 +1100,27 @@ public class SOS implements CPU.TrapHandler
 				int remainingSpace = m_RAM.getSize() - addr;
 				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
 				m_freeList.add(newMemblock);
+				
+				return allocBlock(size);
 
 			} else {
-
-				//TODO: Use constant instead of -1
-				return -1;
-
+				return ALLOC_BLOCK_FAILED;
 			}
 
 		}
 
 		m_freeList.remove(selected);
+		
+		System.out.println("Allocated memory from " + selected.getAddr() + " to " + (selected.getAddr() + size));
 
 		//If it is an exact size then we don't have to add a mem block
 		if (selected.getSize() == size) {
-			//TODO: Use constant instead of 0
 			return selected.getAddr();
 		}
 
 		int newAddr = selected.m_addr + size;
 		int newSize = selected.m_size - size;
+		System.out.println("Shrinking free memory space from " + selected.getAddr() +"-" + (selected.getAddr() + selected.getSize()) + " to " + newAddr + "-" + (newAddr+newSize));
 		MemBlock remaining = new MemBlock(newAddr, newSize);
 
 		m_freeList.add(remaining);
@@ -1180,14 +1175,12 @@ public class SOS implements CPU.TrapHandler
 
 		//Base Case: No more processes after the first empty block
 		if (nextProcess == null) {
-			//			TODO: Constants
 			return null;
 		}
 
-
-
-		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
+//		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
 		int nextSlot = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
+		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
 
 		ProcessControlBlock pcb = getNextProcessInMemory(nextSlot);
@@ -1208,7 +1201,8 @@ public class SOS implements CPU.TrapHandler
 		int size = m_currProcess.getRegisterValue(CPU.LIM);
 
 		MemBlock newSpace = new MemBlock(start, size);
-
+		System.out.println("Freeing memory from " + start + " to " + (start+size));
+		
 		Vector<MemBlock> delete = new Vector<SOS.MemBlock>();
 		for (MemBlock mem : m_freeList) {
 
@@ -1216,11 +1210,14 @@ public class SOS implements CPU.TrapHandler
 				newSpace.m_addr = mem.m_addr;
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);
+				System.out.println("Merging memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
+				
 			}
 
 			if (mem.compareTo(newSpace) == newSpace.getSize()) {
 				newSpace.m_size += mem.m_size;
-				delete.add(mem);
+				delete.add(mem);				
+				System.out.println("Merging memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
 			}
 
 		}
@@ -1233,6 +1230,25 @@ public class SOS implements CPU.TrapHandler
 		
 	}//freeCurrProcessMemBlock
 
+	/**
+	 * printProcessTable      **DEBUGGING**
+	 *
+	 * prints all the processes in the process table
+	 */
+	private void printProcessTable()
+	{
+		debugPrintln("");
+		debugPrintln("Process Table (" + m_processes.size() + " processes)");
+		debugPrintln("======================================================================");
+		for(ProcessControlBlock pi : m_processes)
+		{
+			debugPrintln("    " + pi);
+		}//for
+		debugPrintln("----------------------------------------------------------------------");
+
+	}//printProcessTable
+
+	
 	/**
 	 * printMemAlloc                 *DEBUGGING*
 	 *
@@ -1279,7 +1295,7 @@ public class SOS implements CPU.TrapHandler
 			//next process
 			if ( mAddr > pAddr )
 			{
-				int size = pi.getRegisterValue(CPU.LIM) - pi.getRegisterValue(CPU.BASE);
+				int size = pi.getRegisterValue(CPU.LIM);
 				System.out.print(" Process " + pi.processId +  " (addr=" + pAddr + " size=" + size + " words)");
 				System.out.print(" @BASE=" + m_RAM.read(pi.getRegisterValue(CPU.BASE))
 						+ " @SP=" + m_RAM.read(pi.getRegisterValue(CPU.SP)));
