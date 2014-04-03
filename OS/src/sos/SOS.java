@@ -1002,18 +1002,20 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		if (selected == null) {
-			System.out.println("Never Selected");
-			printMemAlloc();
-			System.out.println("Required Size: " + size);
-			System.out.println("Total Space Available" + totalAvailable);
+//			System.out.println("Never Selected");
+//			printMemAlloc();
+//			System.out.println("Required Size: " + size);
+//			System.out.println("Total Space Available" + totalAvailable);
 			//if their is enough room to allocate the space but it ins't contiguous then
 			//group all processes together
 			if (totalAvailable >= size) {
 				System.out.println("can consolidate");
 				ProcessControlBlock lastBlock = smartMove(firstEmptyBlock);
-				if (lastBlock == null)
+				if (lastBlock == null) {
+					System.out.println("Fail1");
+					printMemAlloc();
 					return ALLOC_BLOCK_FAILED;
-				
+				}
 				
 				m_freeList.clear();
 
@@ -1023,7 +1025,7 @@ public class SOS implements CPU.TrapHandler
 				m_freeList.add(newMemblock);
 
 				System.out.println("Finished");
-				//printMemAlloc();
+				printMemAlloc();
 				
 				return allocBlock(size);
 
@@ -1102,13 +1104,15 @@ public class SOS implements CPU.TrapHandler
 			return null;
 		}
 
-//		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
+		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
 		
 		//if there is a process after the first empty slot shift it
 		int nextSlot = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
 		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
 
+		printMemAlloc();
+		
 		//find the next process to shift
 		ProcessControlBlock pcb = getNextProcessInMemory(nextSlot);
 
@@ -1117,10 +1121,13 @@ public class SOS implements CPU.TrapHandler
 			return null;
 		}
 		//otherwise shift it
-		ProcessControlBlock lastPCB = smartMove(pcb.getRegisterValue(CPU.BASE)+1);
+//		ProcessControlBlock lastPCB = smartMove(pcb.getRegisterValue(CPU.BASE));
+		ProcessControlBlock lastPCB = smartMove(emptySlot);
 			
-		
-		return lastPCB;
+		if (lastPCB == null)
+			return pcb;
+		else
+			return lastPCB;
 		
 	}
 
@@ -1234,7 +1241,7 @@ public class SOS implements CPU.TrapHandler
 			if ( mAddr > pAddr )
 			{
 				int size = pi.getRegisterValue(CPU.LIM);
-				System.out.print(" Process " + pi.processId +  " (addr=" + pAddr + " size=" + size + " words)");
+				System.out.print(" Process " + pi.processId +  " (addr=" + pAddr + ", size=" + size + " words, limit= " + (pAddr + size) + ") ");
 				System.out.print(" @BASE=" + m_RAM.read(pi.getRegisterValue(CPU.BASE))
 						+ " @SP=" + m_RAM.read(pi.getRegisterValue(CPU.SP)));
 				System.out.println();
@@ -1251,7 +1258,7 @@ public class SOS implements CPU.TrapHandler
 			{
 				//The free memory block has the lowest address so print it and
 				//get the next free memory block
-				System.out.println("    Open(addr=" + mAddr + " size=" + m.getSize() + ")");
+				System.out.println("    Open(addr=" + mAddr + ", size=" + m.getSize() + " words, limit= " + (mAddr + m.getSize()) + ")");
 				if (iterFree.hasNext())
 				{
 					m = iterFree.next();
