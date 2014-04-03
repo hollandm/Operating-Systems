@@ -10,7 +10,7 @@ import javax.swing.text.html.MinimalHTMLWriter;
  * the real-world processor in order to allow a focus on the essentials of
  * operating system design using a high level programming language.
  *
- * @authors harber14, hollandm15
+ * @authors hollandm15, domingue15, varvel15
  */
 
 public class SOS implements CPU.TrapHandler
@@ -977,10 +977,12 @@ public class SOS implements CPU.TrapHandler
 	/**
 	 * allocBlock
 	 * 
-	 * TODO: Finish this later
+	 * Description: First Fit. If a contiguous block of memory that is big enough to fit the given size program
+	 * 		exists then allocate memory. Otherwise, if the total amount of free space is enough for the program, 
+	 * 		compact memory for allocation. If there is not enough free space, failed.
 	 * 
 	 * @param size how much memory requested
-	 * @return
+	 * @return the address of the allocated block
 	 */
 	private int allocBlock(int size)
 	{
@@ -992,9 +994,10 @@ public class SOS implements CPU.TrapHandler
 		int totalAvailable = 0;
 		int firstEmptyBlock = Integer.MAX_VALUE; //The only way it could keep this value would be that m_freeList is empty
 
-		//Look through free memory blocks looking for one that is big enough to store the prgoram
+		//Look through free memory blocks looking for one that is big enough to store the program
 		MemBlock selected = null;
 		for (MemBlock mem : m_freeList) {
+			//keep track of how much free memory is available
 			totalAvailable += mem.getSize();
 
 			if (firstEmptyBlock > mem.m_addr) {
@@ -1008,16 +1011,15 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		if (selected == null) {
-//			System.out.println("Never Selected");
-//			printMemAlloc();
-//			System.out.println("Required Size: " + size);
-//			System.out.println("Total Space Available" + totalAvailable);
-			//if their is enough room to allocate the space but it ins't contiguous then
+			//if there is enough room to allocate the space but it isn't contiguous then
 			//group all processes together
 			if (totalAvailable >= size) {
 				if (m_debug)
 					System.out.println("can consolidate");
+				
 				ProcessControlBlock lastBlock = smartMove(firstEmptyBlock);
+				
+				//This "should" never happen
 				if (lastBlock == null) {
 					if (m_debug) {
 						System.out.println("Fail1");
@@ -1026,8 +1028,10 @@ public class SOS implements CPU.TrapHandler
 					return ALLOC_BLOCK_FAILED;
 				}
 				
+				//Since things are compacted, update m_freelist
 				m_freeList.clear();
 
+				//Creates the Memblock for the space after compaction
 				int addr = lastBlock.getRegisterValue(CPU.LIM) + lastBlock.getRegisterValue(CPU.BASE);
 				int remainingSpace = m_RAM.getSize() - addr;
 				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
@@ -1037,7 +1041,8 @@ public class SOS implements CPU.TrapHandler
 					System.out.println("Finished");
 					printMemAlloc();
 				}
-				
+			
+				//recurse to actually allocate the space to the process
 				return allocBlock(size);
 
 			} else {
@@ -1046,32 +1051,42 @@ public class SOS implements CPU.TrapHandler
 
 		}
 
+		//Space was found in an existing Memblock
+		//Update m_freeList
 		m_freeList.remove(selected);
 		if (m_debug)
 			System.out.println("Allocated memory from " + selected.getAddr() + " to " + (selected.getAddr() + size));
 
-		//If it is an exact size then we don't have to add a mem block
+		//If it is an exact size then we don't have to add a Memblock
 		if (selected.getSize() == size) {
 			return selected.getAddr();
 		}
 
+		//Create the Memblock for the space that the program did not take up
 		int newAddr = selected.m_addr + size;
 		int newSize = selected.m_size - size;
 		
 		if (m_debug)
 			System.out.println("Shrinking free memory space from " + selected.getAddr() +"-" + (selected.getAddr() + selected.getSize()) + " to " + newAddr + "-" + (newAddr+newSize));
 		MemBlock remaining = new MemBlock(newAddr, newSize);
-		//TODO: Check if their is an adjacent mem block before adding the new MemBlock, probally not the case since we are removing selected before we create this
 		m_freeList.add(remaining);
 
 		return selected.getAddr();
 	}//allocBlock
 
 	
-	//TODO: Header
+	/**
+	 * getNextProcessInMemory
+	 * 
+	 * Description: This helper method finds the next process in memory after the given address.
+	 * 
+	 * @param nextSlotAddress - look for a pcb with base after this index
+	 * @return the pcb if there is one, otherwise return null
+	 */
 	private ProcessControlBlock getNextProcessInMemory(int nextSlotAddress) {
 		int nextProcess = Integer.MAX_VALUE;
 
+		
 		ProcessControlBlock selected = null;
 		for (ProcessControlBlock pcb : m_processes) {
 			int base = pcb.getRegisterValue(CPU.BASE);
@@ -1090,28 +1105,21 @@ public class SOS implements CPU.TrapHandler
 		return selected;
 	}
 
-	//TODO: Header
+
+	/**
+	 * smartMove
+	 * 
+	 * Description: This helper method compacts all the memory
+	 * 
+	 * @param firstEmptyBlock - shifts processes after this index to this index 
+	 * @return the last pcb moved. If there isn't one, return null
+	 */
 	private ProcessControlBlock smartMove(int firstEmptyBlock) {
-		// try reallocating memory to make room
-
+		
 		ProcessControlBlock nextProcess = null;
-		int nextBase = Integer.MAX_VALUE;
-		for (ProcessControlBlock pcb : m_processes) {
-			int base = pcb.getRegisterValue(m_CPU.BASE);
-
-			//This doesn't matter because it is before the first gap in memory
-			if (base < firstEmptyBlock) {
-				continue;
-			}
-
-			//This doesn't matter because we have already found a process closer to the gap
-			if (base > nextBase) {
-				continue;
-			}
-
-			nextBase = base;
-			nextProcess = pcb;
-		}
+		
+		//finds the first process after firstEmptyBlock
+		nextProcess = getNextProcessInMemory(firstEmptyBlock);
 
 		//Base Case: No more processes after the first empty block
 		if (nextProcess == null) {
@@ -1158,6 +1166,7 @@ public class SOS implements CPU.TrapHandler
 		int start = m_currProcess.getRegisterValue(CPU.BASE);
 		int size = m_currProcess.getRegisterValue(CPU.LIM);
 
+		//Create a new Memblock to replace the removed process
 		MemBlock newSpace = new MemBlock(start, size);
 		m_freeList.add(newSpace);
 		if (m_debug) {
@@ -1165,6 +1174,8 @@ public class SOS implements CPU.TrapHandler
 			printMemAlloc();
 		}
 		
+		//Iterate through m_freeList to looking for adjacent Memblocks, if found merge them with
+		//the new Memblock and mark delete them
 		Vector<MemBlock> delete = new Vector<SOS.MemBlock>();
 		for (MemBlock mem : m_freeList) {
 
@@ -1733,7 +1744,15 @@ public class SOS implements CPU.TrapHandler
 		}
 
 
-		//TODO: <insert method header here>
+
+		/**
+		 * move
+		 * 
+		 * Description: move this pcb to another point in memory
+		 * 
+		 * @param newBase - the new location in memory
+		 * @return whether or not it was successful
+		 */
 		public boolean move(int newBase)
 		{
 			
@@ -1750,12 +1769,14 @@ public class SOS implements CPU.TrapHandler
 			int oldBase = getRegisterValue(CPU.BASE);
 			int programSize = getRegisterValue(CPU.LIM);
 
+			//actually move the program
 			for (int i = 0; i < programSize; ++i) {
 
 				int newValue = m_RAM.read(oldBase + i);
 				m_RAM.write(newBase + i, newValue);
 			}
 
+			//update registers saved in pcb
 			setRegisterValue(CPU.BASE, newBase);
 
 			int newSP = this.getRegisterValue(CPU.SP) - oldBase + newBase;
@@ -1764,6 +1785,7 @@ public class SOS implements CPU.TrapHandler
 			int newPC = this.getRegisterValue(CPU.PC) - oldBase + newBase;
 			setRegisterValue(CPU.PC, newPC);
 
+			//if this is the current process then update CPU registers
 			if (this == m_currProcess) {
 				m_CPU.setBASE(newBase);
 				
@@ -1780,7 +1802,6 @@ public class SOS implements CPU.TrapHandler
 				debugPrintln("Process " + this.getProcessId() + " has moved from " + oldBase + " to " + newBase);
 
 			return true;
-			//%%%You will implement this method
 		}//move
 
 	}//class ProcessControlBlock
