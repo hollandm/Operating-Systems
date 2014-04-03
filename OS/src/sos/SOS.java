@@ -60,6 +60,9 @@ public class SOS implements CPU.TrapHandler
 	 * status messages
 	 **/
 	public static final boolean m_verbose = true;
+	
+	//for non required output
+	public static final boolean m_debug = false;
 
 	/**
 	 * The CPU the operating system is managing.
@@ -201,6 +204,7 @@ public class SOS implements CPU.TrapHandler
 		m_processes.add(m_currProcess);
 
 	}//createIdleProcess
+	
 	/**
 	 * removeCurrentProcess
 	 * 
@@ -208,8 +212,8 @@ public class SOS implements CPU.TrapHandler
 	 */
 	public void removeCurrentProcess()
 	{
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been removed from RAM");
-
+		if (m_debug) 
+			debugPrintln("The process " + m_currProcess.getProcessId() + " has been removed from RAM");
 
 		m_processes.remove(m_currProcess);
 		freeCurrProcessMemBlock();
@@ -333,9 +337,6 @@ public class SOS implements CPU.TrapHandler
 		m_programs.add(prog);
 	}//addProgram
 
-
-
-
 	/**
 	 * selectBlockedProcess
 	 *
@@ -394,12 +395,14 @@ public class SOS implements CPU.TrapHandler
 
 		
 		if (newMemory == ALLOC_BLOCK_FAILED) {
-			System.out.println("Alloc Block Failed: requires " + allocSize);
+			if (m_debug)
+				System.out.println("Alloc Block Failed: requires " + allocSize);
 			return false;
 		}
 
 		//Save register values of the currently running process to somewhere
 		m_currProcess.save(m_CPU);
+		
 		printMemAlloc();
 
 		//Create a new process
@@ -422,7 +425,8 @@ public class SOS implements CPU.TrapHandler
 		m_currProcess = newProcess;
 		m_currProcess.save(m_CPU);
 
-		debugPrintln("The process " + m_currProcess.getProcessId() + " has been added into RAM");
+		if (m_debug)
+			debugPrintln("The process " + m_currProcess.getProcessId() + " has been added into RAM");
 
 		return true;
 
@@ -697,7 +701,7 @@ public class SOS implements CPU.TrapHandler
 
 			//			debugPrintln("Process " + blockedProcess.getProcessId() + " opened device " + deviceNum);
 		} else {
-			System.out.print("");
+//			System.out.print("");
 		}
 
 
@@ -751,7 +755,8 @@ public class SOS implements CPU.TrapHandler
 			m_CPU.push(data);
 			m_CPU.push(SOS.SYSCALL_WRITE);
 			m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
-			debugPrintln("Process id " + m_currProcess.getProcessId() + " is now ready");
+			if (m_debug)
+				debugPrintln("Process id " + m_currProcess.getProcessId() + " is now ready");
 
 			scheduleNewProcess();
 			return;
@@ -809,7 +814,8 @@ public class SOS implements CPU.TrapHandler
 			m_CPU.push(addr);
 			m_CPU.push(SOS.SYSCALL_READ);
 			m_CPU.setPC(m_CPU.getPC() - CPU.INSTRSIZE);
-			debugPrintln("Process id " + m_currProcess.getProcessId() + " is now ready");
+			if (m_debug)
+				debugPrintln("Process id " + m_currProcess.getProcessId() + " is now ready");
 			scheduleNewProcess();
 			return;
 		}
@@ -859,7 +865,7 @@ public class SOS implements CPU.TrapHandler
 	 */
 	@Override
 	public void interruptIllegalMemoryAccess(int addr) {
-		System.out.println("Illegal Memory Access of addr: " + addr);
+		System.out.println("Illegal Memory Access of addr: " + addr + " by proccess " + m_currProcess.getProcessId());
 		
 		removeCurrentProcess();
 
@@ -1009,11 +1015,14 @@ public class SOS implements CPU.TrapHandler
 			//if their is enough room to allocate the space but it ins't contiguous then
 			//group all processes together
 			if (totalAvailable >= size) {
-				System.out.println("can consolidate");
+				if (m_debug)
+					System.out.println("can consolidate");
 				ProcessControlBlock lastBlock = smartMove(firstEmptyBlock);
 				if (lastBlock == null) {
-					System.out.println("Fail1");
-					printMemAlloc();
+					if (m_debug) {
+						System.out.println("Fail1");
+						printMemAlloc();
+					}
 					return ALLOC_BLOCK_FAILED;
 				}
 				
@@ -1024,8 +1033,10 @@ public class SOS implements CPU.TrapHandler
 				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
 				m_freeList.add(newMemblock);
 
-				System.out.println("Finished");
-				printMemAlloc();
+				if (m_debug) {
+					System.out.println("Finished");
+					printMemAlloc();
+				}
 				
 				return allocBlock(size);
 
@@ -1036,8 +1047,8 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		m_freeList.remove(selected);
-		
-		System.out.println("Allocated memory from " + selected.getAddr() + " to " + (selected.getAddr() + size));
+		if (m_debug)
+			System.out.println("Allocated memory from " + selected.getAddr() + " to " + (selected.getAddr() + size));
 
 		//If it is an exact size then we don't have to add a mem block
 		if (selected.getSize() == size) {
@@ -1046,14 +1057,17 @@ public class SOS implements CPU.TrapHandler
 
 		int newAddr = selected.m_addr + size;
 		int newSize = selected.m_size - size;
-		System.out.println("Shrinking free memory space from " + selected.getAddr() +"-" + (selected.getAddr() + selected.getSize()) + " to " + newAddr + "-" + (newAddr+newSize));
+		
+		if (m_debug)
+			System.out.println("Shrinking free memory space from " + selected.getAddr() +"-" + (selected.getAddr() + selected.getSize()) + " to " + newAddr + "-" + (newAddr+newSize));
 		MemBlock remaining = new MemBlock(newAddr, newSize);
-
+		//TODO: Check if their is an adjacent mem block before adding the new MemBlock, probally not the case since we are removing selected before we create this
 		m_freeList.add(remaining);
 
 		return selected.getAddr();
 	}//allocBlock
 
+	
 	//TODO: Header
 	private ProcessControlBlock getNextProcessInMemory(int nextSlotAddress) {
 		int nextProcess = Integer.MAX_VALUE;
@@ -1108,20 +1122,21 @@ public class SOS implements CPU.TrapHandler
 		
 		//if there is a process after the first empty slot shift it
 		int nextSlot = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
+	
 		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
 
-		printMemAlloc();
+		if (m_debug)
+			printMemAlloc();
 		
 		//find the next process to shift
 		ProcessControlBlock pcb = getNextProcessInMemory(nextSlot);
 
 		//if there is no more processes to shift, return null
 		if (pcb == null) {
-			return null;
+			return nextProcess;
 		}
 		//otherwise shift it
-//		ProcessControlBlock lastPCB = smartMove(pcb.getRegisterValue(CPU.BASE));
 		ProcessControlBlock lastPCB = smartMove(emptySlot);
 			
 		if (lastPCB == null)
@@ -1145,8 +1160,10 @@ public class SOS implements CPU.TrapHandler
 
 		MemBlock newSpace = new MemBlock(start, size);
 		m_freeList.add(newSpace);
-		System.out.println("Freeing memory from " + start + " to " + (start+size));
-		printMemAlloc();
+		if (m_debug) {
+			System.out.println("Freeing memory from " + start + " to " + (start+size));
+			printMemAlloc();
+		}
 		
 		Vector<MemBlock> delete = new Vector<SOS.MemBlock>();
 		for (MemBlock mem : m_freeList) {
@@ -1155,14 +1172,16 @@ public class SOS implements CPU.TrapHandler
 				newSpace.m_addr = mem.m_addr;
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);
-				System.out.println("Merging Down memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
+				if (m_debug)
+					System.out.println("Merging Down memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
 				
 			}
 
 			if (mem.compareTo(newSpace) == newSpace.getSize()) {
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);				
-				System.out.println("Merging Up memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
+				if (m_debug)
+					System.out.println("Merging Up memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
 			}
 
 		}
@@ -1171,7 +1190,8 @@ public class SOS implements CPU.TrapHandler
 		for (MemBlock mem : delete) {
 			m_freeList.remove(mem);
 		}
-		printMemAlloc();
+		if (m_debug) 
+			printMemAlloc();
 		
 	}//freeCurrProcessMemBlock
 
@@ -1716,8 +1736,6 @@ public class SOS implements CPU.TrapHandler
 		//TODO: <insert method header here>
 		public boolean move(int newBase)
 		{
-
-			debugPrintln("Moving");
 			
 			if (newBase < 0) {
 				//Something bad has happened
@@ -1757,9 +1775,9 @@ public class SOS implements CPU.TrapHandler
 			}
 
 			//limit does not need to be changed since it is a logical address
-
-			debugPrintln("Process " + this.getProcessId() + " has moved from " + oldBase + 
-					" to " + newBase);
+			
+			if (m_debug)
+				debugPrintln("Process " + this.getProcessId() + " has moved from " + oldBase + " to " + newBase);
 
 			return true;
 			//%%%You will implement this method

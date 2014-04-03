@@ -317,7 +317,8 @@ public class CPU implements Runnable
 		int sp = getSP() + STACKITEMSIZE;
 		
 		if (!isMemAddressInRange(sp)) {
-			System.out.println("Trying to pop out side of the program memory");
+//			System.out.println("Trying to pop out side of the program memory");
+			m_TH.interruptIllegalMemoryAccess(sp);
 			return -1;
 		}
 		
