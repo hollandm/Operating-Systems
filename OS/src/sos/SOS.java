@@ -292,11 +292,13 @@ public class SOS implements CPU.TrapHandler
 	public void scheduleNewProcess()
 	{
 
+		
 		if (m_processes.isEmpty()) {
 			System.out.println("No more processes available");
 			System.exit(0);
 		}
-		ProcessControlBlock newProcess = getProcess();
+		ProcessControlBlock newProcess = getRandomProcess();
+//		ProcessControlBlock newProcess = getProcess();
 
 		if  (m_currProcess != newProcess) {
 			m_currProcess.save(m_CPU);
@@ -1000,16 +1002,28 @@ public class SOS implements CPU.TrapHandler
 		}
 
 		if (selected == null) {
+			System.out.println("Never Selected");
+			printMemAlloc();
+			System.out.println("Required Size: " + size);
+			System.out.println("Total Space Available" + totalAvailable);
 			//if their is enough room to allocate the space but it ins't contiguous then
 			//group all processes together
 			if (totalAvailable >= size) {
+				System.out.println("can consolidate");
 				ProcessControlBlock lastBlock = smartMove(firstEmptyBlock);
+				if (lastBlock == null)
+					return ALLOC_BLOCK_FAILED;
+				
+				
 				m_freeList.clear();
 
 				int addr = lastBlock.getRegisterValue(CPU.LIM) + lastBlock.getRegisterValue(CPU.BASE);
 				int remainingSpace = m_RAM.getSize() - addr;
 				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
 				m_freeList.add(newMemblock);
+
+				System.out.println("Finished");
+				//printMemAlloc();
 				
 				return allocBlock(size);
 
@@ -1067,7 +1081,7 @@ public class SOS implements CPU.TrapHandler
 		ProcessControlBlock nextProcess = null;
 		int nextBase = Integer.MAX_VALUE;
 		for (ProcessControlBlock pcb : m_processes) {
-			int base = pcb.getRegisterValue(m_CPU.getBASE());
+			int base = pcb.getRegisterValue(m_CPU.BASE);
 
 			//This doesn't matter because it is before the first gap in memory
 			if (base < firstEmptyBlock) {
@@ -1089,21 +1103,33 @@ public class SOS implements CPU.TrapHandler
 		}
 
 //		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
+		
+		//if there is a process after the first empty slot shift it
 		int nextSlot = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
 		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
 
+		//find the next process to shift
 		ProcessControlBlock pcb = getNextProcessInMemory(nextSlot);
 
-		ProcessControlBlock lastPCB = smartMove(pcb.getRegisterValue(CPU.BASE));
-		if (lastPCB == null) {
-			return pcb;
+		//if there is no more processes to shift, return null
+		if (pcb == null) {
+			return null;
 		}
-
+		//otherwise shift it
+		ProcessControlBlock lastPCB = smartMove(pcb.getRegisterValue(CPU.BASE)+1);
+			
+		
 		return lastPCB;
+		
 	}
 
-	//TODO: <insert method header here>
+	/**
+	 * freeCurrProcessMemBlock
+	 * 
+	 * Description: frees the current process, merges any contiguous MemBlocks
+	 * 
+	 */
 	private void freeCurrProcessMemBlock()
 	{
 
@@ -1111,7 +1137,9 @@ public class SOS implements CPU.TrapHandler
 		int size = m_currProcess.getRegisterValue(CPU.LIM);
 
 		MemBlock newSpace = new MemBlock(start, size);
+		m_freeList.add(newSpace);
 		System.out.println("Freeing memory from " + start + " to " + (start+size));
+		printMemAlloc();
 		
 		Vector<MemBlock> delete = new Vector<SOS.MemBlock>();
 		for (MemBlock mem : m_freeList) {
@@ -1120,23 +1148,23 @@ public class SOS implements CPU.TrapHandler
 				newSpace.m_addr = mem.m_addr;
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);
-				System.out.println("Merging memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
+				System.out.println("Merging Down memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
 				
 			}
 
 			if (mem.compareTo(newSpace) == newSpace.getSize()) {
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);				
-				System.out.println("Merging memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
+				System.out.println("Merging Up memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
 			}
 
 		}
 
 		//Because we can't delete them while iterating through
-		m_freeList.add(newSpace);
 		for (MemBlock mem : delete) {
 			m_freeList.remove(mem);
 		}
+		printMemAlloc();
 		
 	}//freeCurrProcessMemBlock
 
@@ -1682,6 +1710,8 @@ public class SOS implements CPU.TrapHandler
 		public boolean move(int newBase)
 		{
 
+			debugPrintln("Moving");
+			
 			if (newBase < 0) {
 				//Something bad has happened
 				return false;
@@ -1703,15 +1733,19 @@ public class SOS implements CPU.TrapHandler
 
 			setRegisterValue(CPU.BASE, newBase);
 
-			int newSP = getRegisterValue(CPU.SP) - oldBase + newBase;
+			int newSP = this.getRegisterValue(CPU.SP) - oldBase + newBase;
 			setRegisterValue(CPU.SP, newSP);
 
-			int newPC = getRegisterValue(CPU.PC) - oldBase + newBase;
+			int newPC = this.getRegisterValue(CPU.PC) - oldBase + newBase;
 			setRegisterValue(CPU.PC, newPC);
 
 			if (this == m_currProcess) {
 				m_CPU.setBASE(newBase);
+				
+				newSP = m_CPU.getSP() - oldBase + newBase;
 				m_CPU.setPC(newPC);
+				
+				newPC = m_CPU.getPC() - oldBase + newBase;
 				m_CPU.setSP(newSP);
 			}
 
