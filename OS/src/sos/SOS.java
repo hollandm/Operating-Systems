@@ -61,7 +61,9 @@ public class SOS implements CPU.TrapHandler
 	 **/
 	public static final boolean m_verbose = true;
 	
-	//for non required output
+	/**
+	 * for output that we want to hide from the graders >:)
+	 */
 	public static final boolean m_debug = false;
 
 	/**
@@ -1122,14 +1124,13 @@ public class SOS implements CPU.TrapHandler
 		nextProcess = getNextProcessInMemory(firstEmptyBlock);
 
 		//Base Case: No more processes after the first empty block
-		if (nextProcess == null) {
+		if (nextProcess == null)
 			return null;
-		}
 
+		//the location of slot after the process has been shifted
 		int emptySlot = firstEmptyBlock + nextProcess.getRegisterValue(CPU.LIM);
 		
-		//if there is a process after the first empty slot shift it
-		int nextSlot = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
+		int endOfNextProcess = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
 	
 		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
@@ -1138,17 +1139,17 @@ public class SOS implements CPU.TrapHandler
 			printMemAlloc();
 		
 		//find the next process to shift
-		ProcessControlBlock pcb = getNextProcessInMemory(nextSlot);
+		ProcessControlBlock pcb = getNextProcessInMemory(endOfNextProcess);
 
-		//if there is no more processes to shift, return null
-		if (pcb == null) {
+		//if there is no more processes to shift, return nextProcess
+		if (pcb == null)
 			return nextProcess;
-		}
-		//otherwise shift it
+		//otherwise shift the next next process
 		ProcessControlBlock lastPCB = smartMove(emptySlot);
-			
+		
+		//if lastPCB is null, then we hit the base case
 		if (lastPCB == null)
-			return pcb;
+			return pcb; 
 		else
 			return lastPCB;
 		
@@ -1169,25 +1170,30 @@ public class SOS implements CPU.TrapHandler
 		//Create a new Memblock to replace the removed process
 		MemBlock newSpace = new MemBlock(start, size);
 		m_freeList.add(newSpace);
+		
 		if (m_debug) {
 			System.out.println("Freeing memory from " + start + " to " + (start+size));
 			printMemAlloc();
 		}
 		
-		//Iterate through m_freeList to looking for adjacent Memblocks, if found merge them with
-		//the new Memblock and mark delete them
+		//Iterate through m_freeList to looking for adjacent Memblocks, if found, merge them with
+		//the new Memblock and mark them for deletion
+		
 		Vector<MemBlock> delete = new Vector<SOS.MemBlock>();
 		for (MemBlock mem : m_freeList) {
 
+			//a MemBlock exists below to merge with
 			if (newSpace.compareTo(mem) == mem.getSize()) {
 				newSpace.m_addr = mem.m_addr;
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);
+		
 				if (m_debug)
 					System.out.println("Merging Down memory blocks " + newSpace.m_addr + " to " + (newSpace.m_addr+newSpace.m_size));
 				
 			}
 
+			//a MemBlock exists above to merge with
 			if (mem.compareTo(newSpace) == newSpace.getSize()) {
 				newSpace.m_size += mem.m_size;
 				delete.add(mem);				
