@@ -1880,8 +1880,9 @@ public class SOS implements CPU.TrapHandler
 		 */
 		public boolean move(int newBase)
 		{
-			
-			if (newBase < 0) {
+
+//			if (newBase < 0) {
+			if (newBase < m_MMU.getPageSize()) {
 				//Something bad has happened
 				return false;
 			}
