@@ -474,7 +474,9 @@ public class CPU implements Runnable
 
 				//Pop an item off the stack
 			case POP:
-				m_registers[instruction[1]] = pop();
+				//on sperate line for debug purposes
+				int newVal = pop();
+				m_registers[instruction[1]] = newVal;
 				break;
 
 				//push an item to the stack

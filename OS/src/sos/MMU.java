@@ -148,7 +148,7 @@ public class MMU
         m_numPages = size / m_pageSize;
         m_size = m_numPages * m_pageSize;
         
-        System.out.println("Page Size: " + m_pageSize);
+//        System.out.println("Page Size: " + m_pageSize);
 
     }//ctor
 

@@ -1122,8 +1122,9 @@ public class SOS implements CPU.TrapHandler
 			//if there is enough room to allocate the space but it isn't contiguous then
 			//group all processes together
 			if (totalAvailable >= size) {
-				if (m_debug)
-					System.out.println("can consolidate");
+//				System.out.println("Begin Defrag");
+				
+//				printMemAlloc();
 				
 				ProcessControlBlock lastBlock = defrag(firstEmptyBlock);
 				
@@ -1148,18 +1149,17 @@ public class SOS implements CPU.TrapHandler
 				//Creates the Memblock for the space after compaction
 				int addr = lastBlock.getRegisterValue(CPU.LIM) + lastBlock.getRegisterValue(CPU.BASE);
 				int remainingSpace = m_MMU.getSize() - addr;
+//				System.out.println("Done with defrag: " + remainingSpace + " space remaining");
 				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
 				m_freeList.add(newMemblock);
+//				printMemAlloc();
 
-				if (m_debug) {
-					System.out.println("Finished");
-					printMemAlloc();
-				}
-			
+//				System.out.println("Finished");
 				//recurse to actually allocate the space to the process
 				return allocBlock(size);
 
 			} else {
+				printPageTable();
 				return ALLOC_BLOCK_FAILED;
 			}
 
@@ -1229,7 +1229,7 @@ public class SOS implements CPU.TrapHandler
 	 * @return the last pcb moved. If there isn't one, return null
 	 */
 	private ProcessControlBlock defrag(int firstEmptyBlock) {
-		System.out.println("Defrag");
+//		System.out.println("Defrag");
 		ProcessControlBlock nextProcess = null;
 		
 		//finds the first process after firstEmptyBlock
@@ -1244,9 +1244,12 @@ public class SOS implements CPU.TrapHandler
 		
 		int endOfNextProcess = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
 	
-		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
+//		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
 
+//		System.out.println("Defrag Step:");
+//		printMemAlloc();
+		
 		if (m_debug)
 			printMemAlloc();
 		
@@ -1392,8 +1395,11 @@ public class SOS implements CPU.TrapHandler
                 int size = pi.getRegisterValue(CPU.LIM);
                 System.out.print(" Process " + pi.processId +  " (addr=" + pAddr + " size=" + size + " words");
                 System.out.print(" / " + (size / m_MMU.getPageSize()) + " pages)" );
-                System.out.print(" @BASE=" + m_MMU.read(pi.getRegisterValue(CPU.BASE))
-                                 + " @SP=" + m_MMU.read(pi.getRegisterValue(CPU.SP)));
+//                System.out.print(" @BASE=" + m_MMU.read(pi.getRegisterValue(CPU.BASE))
+//                                 + " @SP=" + m_MMU.read(pi.getRegisterValue(CPU.SP)));
+                System.out.print(" BASE=" + pi.getRegisterValue(CPU.BASE)
+                        + " SP=" + pi.getRegisterValue(CPU.SP)
+                        + " PC=" + pi.getRegisterValue(CPU.PC));
                 System.out.println();
                 if (iterProc.hasNext())
                 {
@@ -1893,8 +1899,22 @@ public class SOS implements CPU.TrapHandler
 			
 			int newPage = newBase / m_MMU.getPageSize();
 			int oldFrame = m_RAM.read(newPage);
-			m_RAM.write(newPage, newFrame);
-			m_RAM.write(oldPage, oldFrame);
+			
+			int numPages = programSize/m_MMU.getPageSize();
+			for (int i = 0; i < numPages; ++i) {
+				newFrame = m_RAM.read(oldPage+i);
+				oldFrame = m_RAM.read(newPage+i);
+				
+				m_RAM.write(newPage+i, newFrame);
+				m_RAM.write(oldPage+i, oldFrame);
+			}
+			
+//			m_RAM.write(newPage, newFrame);
+//			m_RAM.write(oldPage, oldFrame);
+
+//			System.out.println("swaping elements at " + newPage + " & " + oldPage);
+//			System.out.println("Was " + oldFrame + " & " + newFrame);
+//			System.out.println("Is " + newFrame + " & " + oldFrame);
 			
 			//actually move the program
 //			for (int i = 0; i < programSize; ++i) {
@@ -1935,7 +1955,8 @@ public class SOS implements CPU.TrapHandler
 					
 					newPC = m_CPU.getPC() - oldBase + newBase;
 					m_CPU.setSP(newSP);
-				}		debugPrintln("Process " + this.getProcessId() + " has moved from " + oldBase + " to " + newBase);
+				}		
+			debugPrintln("Process " + this.getProcessId() + " has moved from " + oldBase + " to " + newBase);
 
 			return true;
 		}//move
