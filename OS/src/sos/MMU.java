@@ -298,7 +298,14 @@ public class MMU
     }//setStatus
 
 
-    //TODO: <method header needed>
+    /**
+     * translate
+     * 
+     * Converts a logical address to physical
+     * 
+     * @param virtAddr the logical address
+     * @return the physical address
+     */
     private int translate(int virtAddr)
     {
         

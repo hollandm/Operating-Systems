@@ -173,7 +173,6 @@ public class SOS implements CPU.TrapHandler
 	 */
 	public void createIdleProcess()
 	{
-		//		debugPrintln("Creating Idle Processs");
 		int progArr[] = { 0, 0, 0, 0,   //SET r0=0
 				0, 0, 0, 0,   //SET r0=0 (repeated instruction to account for vagaries in student implementation of the CPU class)
 				10, 0, 0, 0,   //PUSH r0
@@ -320,8 +319,6 @@ public class SOS implements CPU.TrapHandler
 				createIdleProcess();
 				return;
 			}
-
-
 
 			m_currProcess = newProcess;
 
@@ -705,16 +702,9 @@ public class SOS implements CPU.TrapHandler
 		//Again addr is left as 0 since as far as I can tell it does not apply
 
 
-		//		debugPrintln("Process " + m_currProcess.getProcessId() + " closed device " + deviceNum);
-
 		if (blockedProcess != null) {
 			blockedProcess.unblock();
-
-			//			debugPrintln("Process " + blockedProcess.getProcessId() + " opened device " + deviceNum);
-		} else {
-//			System.out.print("");
 		}
-
 
 		m_CPU.push(SYSTEM_HANDLER_SUCCESS);
 	}
@@ -931,7 +921,6 @@ public class SOS implements CPU.TrapHandler
 			removeCurrentProcess();
 		}
 
-		//		debugPrintln("The process " + m_currProcess.getProcessId() + " has recived an interupt from device " + devID);
 		blocked.unblock();
 
 		//Push the data we received from the read to the reading processes stack
@@ -984,7 +973,12 @@ public class SOS implements CPU.TrapHandler
      *----------------------------------------------------------------------
      */
 
-    //TODO: <Method Header Needed>
+    /**
+     * initPageTable
+     * 
+     * Initializes the page table, hides free memory, 
+     * set default values for the page table
+     */
     private void initPageTable()
     {
         
@@ -992,7 +986,6 @@ public class SOS implements CPU.TrapHandler
     	int pageSize = m_MMU.getPageSize();
     	//    	int offset = m_MMU.getOffsetSize();
     	
-    	//TODO: Remove the first numFrames from freeList
     	//How many frames does the page table fill up?
     	int pageTableFrames = (int)Math.ceil(((double)numFrames) / ((double)pageSize));
     	int pageTableSize = pageTableFrames*pageSize;
@@ -1122,18 +1115,11 @@ public class SOS implements CPU.TrapHandler
 			//if there is enough room to allocate the space but it isn't contiguous then
 			//group all processes together
 			if (totalAvailable >= size) {
-//				System.out.println("Begin Defrag");
-				
-//				printMemAlloc();
 				
 				ProcessControlBlock lastBlock = defrag(firstEmptyBlock);
 				
 				//This "should" never happen
 				if (lastBlock == null) {
-					if (m_debug) {
-						System.out.println("Fail1");
-						printMemAlloc();
-					}
 					return ALLOC_BLOCK_FAILED;
 				}
 				
@@ -1149,12 +1135,10 @@ public class SOS implements CPU.TrapHandler
 				//Creates the Memblock for the space after compaction
 				int addr = lastBlock.getRegisterValue(CPU.LIM) + lastBlock.getRegisterValue(CPU.BASE);
 				int remainingSpace = m_MMU.getSize() - addr;
-//				System.out.println("Done with defrag: " + remainingSpace + " space remaining");
+
 				MemBlock newMemblock = new MemBlock(addr, remainingSpace);
 				m_freeList.add(newMemblock);
-//				printMemAlloc();
 
-//				System.out.println("Finished");
 				//recurse to actually allocate the space to the process
 				return allocBlock(size);
 
@@ -1229,7 +1213,7 @@ public class SOS implements CPU.TrapHandler
 	 * @return the last pcb moved. If there isn't one, return null
 	 */
 	private ProcessControlBlock defrag(int firstEmptyBlock) {
-//		System.out.println("Defrag");
+
 		ProcessControlBlock nextProcess = null;
 		
 		//finds the first process after firstEmptyBlock
@@ -1244,11 +1228,7 @@ public class SOS implements CPU.TrapHandler
 		
 		int endOfNextProcess = nextProcess.getRegisterValue(CPU.BASE) + nextProcess.getRegisterValue(CPU.LIM);
 	
-//		System.out.println("Moving from " + nextProcess.getRegisterValue(CPU.BASE) + " to " + firstEmptyBlock);
 		nextProcess.move(firstEmptyBlock);
-
-//		System.out.println("Defrag Step:");
-//		printMemAlloc();
 		
 		if (m_debug)
 			printMemAlloc();
@@ -1909,20 +1889,6 @@ public class SOS implements CPU.TrapHandler
 				m_RAM.write(newPage+i, newFrame);
 				m_RAM.write(oldPage+i, oldFrame);
 			}
-			
-//			m_RAM.write(newPage, newFrame);
-//			m_RAM.write(oldPage, oldFrame);
-
-//			System.out.println("swaping elements at " + newPage + " & " + oldPage);
-//			System.out.println("Was " + oldFrame + " & " + newFrame);
-//			System.out.println("Is " + newFrame + " & " + oldFrame);
-			
-			//actually move the program
-//			for (int i = 0; i < programSize; ++i) {
-//
-//				int newValue = m_MMU.read(oldBase + i);
-//				m_MMU.write(newBase + i, newValue);
-//			}
 			
 
 			//update registers saved in pcb
