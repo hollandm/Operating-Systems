@@ -95,6 +95,8 @@ public class CPU implements Runnable
 	private TrapHandler m_TH = null;
 	
 	private int m_ticks = 0;
+	
+	private MMU m_MMU;
 
 	//======================================================================
 	//Methods
@@ -105,7 +107,7 @@ public class CPU implements Runnable
 	 *
 	 * Initializes all member variables.
 	 */
-	public CPU(RAM ram, InterruptController ic)
+	public CPU(RAM ram, InterruptController ic, MMU mmu)
 	{
 		m_registers = new int[NUMREG];
 		for(int i = 0; i < NUMREG; i++)
@@ -115,6 +117,8 @@ public class CPU implements Runnable
 		m_RAM = ram;
 
 		m_IC = ic;
+		
+		m_MMU = mmu;
 	}//CPU ctor
 
 	/**
@@ -324,7 +328,7 @@ public class CPU implements Runnable
 		
 		setSP(getSP() + STACKITEMSIZE); //Decrement stack pointer to "remove" that item from the stack.
 		
-		return m_RAM.read(sp - STACKITEMSIZE); //return the value that was retrieved from the top of the stack
+		return m_MMU.read(sp - STACKITEMSIZE); //return the value that was retrieved from the top of the stack
 	}
 
 
@@ -347,7 +351,7 @@ public class CPU implements Runnable
 		setSP(sp); //increment SP (to "add" a new entry to the stack)
 
 		//The value of this new entry is set equal to the value of the register
-		m_RAM.write(sp, val); 
+		m_MMU.write(sp, val); 
 	}
 
 	/**
@@ -385,7 +389,7 @@ public class CPU implements Runnable
 			checkForIOInterrupt();
 			
 			//Fetch the next instruction from RAM using the PC register
-			instruction = m_RAM.fetch(getPC()); 
+			instruction = m_MMU.fetch(getPC()); 
 
 			//if verbose mode on
 			if(m_verbose){
@@ -420,11 +424,11 @@ public class CPU implements Runnable
 				//check for divide by zero error
 				if(m_registers[instruction[3]] == 0){
 					m_TH.interruptDivideByZero();
+				} else {
+					m_registers[instruction[1]] = m_registers[instruction[2]] /  m_registers[instruction[3]];
 				}
 
-				m_registers[instruction[1]] = m_registers[instruction[2]] / m_registers[instruction[3]];
 				break;
-
 				//Copy the value of one register to another
 			case COPY:
 				m_registers[instruction[1]] = m_registers[instruction[2]];
@@ -485,7 +489,7 @@ public class CPU implements Runnable
 
 				//The value in RAM at the address specified by the register 
 				//specified by arg2 is placed into the register specified by arg1.
-				m_registers[instruction[1]] =  m_RAM.read(m_registers[instruction[2]] + getBASE());
+				m_registers[instruction[1]] =  m_MMU.read(m_registers[instruction[2]] + getBASE());
 				break;
 
 			case SAVE:
@@ -495,7 +499,7 @@ public class CPU implements Runnable
 
 				//The value of the register specified by arg1 is placed 
 				//in RAM at the address specified by the register specified by arg2.
-				m_RAM.write(m_registers[instruction[2]] + getBASE(), m_registers[instruction[1]]);
+				m_MMU.write(m_registers[instruction[2]] + getBASE(), m_registers[instruction[1]]);
 				break;
 
 				//Initializes a system call
@@ -593,6 +597,7 @@ public class CPU implements Runnable
 	 */
 	public void registerTrapHandler(TrapHandler th)
 	{
+		m_MMU.registerTrapHandler(th);
 		m_TH = th;
 	}
 
